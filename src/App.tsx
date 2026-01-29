@@ -17,16 +17,7 @@ import {
 
 /**
  * QUANTUM SIGNAL HOOK OS — v2 (CONVERSION OPTIMIZED)
- * Conversion targets: 40-60% (vs industry 5-10%)
- * 
- * NEW FEATURES:
- * - Mid-scan "aha" moment (pattern recognition)
- * - Micro-symptom checklist (specificity bomb)
- * - Benchmark context (peer comparison)
- * - Case anchors (proof of pattern)
- * - Predictive outcomes (future contrast)
- * - Commitment ladder (email → call → audit)
- * - Decay timer (legitimate urgency)
+ * Fixed for strict TypeScript mode in Vercel
  */
 
 // ------------------------ CONFIG ------------------------
@@ -269,27 +260,26 @@ const CASE_ANCHORS: Record<
   },
 };
 
-// LEAK INTELLIGENCE (updated with predictive outcomes)
-const LEAKS: Record<
-  ForceId,
-  {
-    leakName: string;
-    humanSymptom: string;
-    whatItMeans: string;
-    todayMove: string;
-    weekPlan: string[];
-    ifYouDont: string;
-    ifYouDo: string;
-    auditReason: string;
-  }
-> = {
+// LEAK INTELLIGENCE (properly typed for strict mode)
+type LeakInfo = {
+  leakName: string;
+  humanSymptom: string;
+  whatItMeans: string;
+  todayMove: string;
+  weekPlan: string[];
+  ifYouDont: string;
+  ifYouDo: string;
+  auditReason: string;
+};
+
+const LEAKS: Record<ForceId, LeakInfo> = {
   essence: {
     leakName: "BLURRY MECHANISM",
-    humanSymptom: "People say: "Interesting… but what exactly do you do?"",
+    humanSymptom: "People say: \"Interesting… but what exactly do you do?\"",
     whatItMeans:
       "Your value isn't sharp enough to create instant trust. You might be talented, but your signal is noisy.",
     todayMove:
-      "Write ONE sentence: "I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME]." Put it on your hero + bio.",
+      "Write ONE sentence: \"I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME].\" Put it on your hero + bio.",
     weekPlan: [
       "Day 1: Name the mechanism (2–4 words).",
       "Day 3: Rewrite hero (outcome + mechanism + proof + CTA).",
@@ -308,10 +298,10 @@ const LEAKS: Record<
     whatItMeans:
       "Your visual + verbal identity isn't matching the level you want to charge. This creates negotiation and doubt.",
     todayMove:
-      "Remove "safe" language. Replace with proof: numbers, outcomes, constraints, and one bold line you truly believe.",
+      "Remove \"safe\" language. Replace with proof: numbers, outcomes, constraints, and one bold line you truly believe.",
     weekPlan: [
       "Day 1: Kill template visuals (one signature element across everything).",
-      "Day 3: Write one "truth bomb" post (your contrarian model).",
+      "Day 3: Write one \"truth bomb\" post (your contrarian model).",
       "Day 7: Upgrade your top 3 assets: homepage, offer page, and one case study.",
     ],
     ifYouDont:
@@ -327,7 +317,7 @@ const LEAKS: Record<
     whatItMeans:
       "You don't have a single obvious flagship path. Too many options or too much custom = decision paralysis.",
     todayMove:
-      "Choose one flagship. Write: "This is for X. You get Y by Z. If you're not X, do not apply."",
+      "Choose one flagship. Write: \"This is for X. You get Y by Z. If you're not X, do not apply.\"",
     weekPlan: [
       "Day 1: Collapse offers → 1 flagship + 1 entry or ascension step.",
       "Day 3: Rewrite pricing page (one path, one CTA).",
@@ -623,9 +613,6 @@ export default function App() {
     return { primary, secondary };
   }, [scores]);
 
-  // AHA MOMENT LOGIC (triggered after question 2)
-  const shouldShowAha = state.idx === 2 && !state.ahaShown && Object.keys(state.answers).length >= 2;
-
   const startScan = () => {
     setState((prev) => ({
       ...prev,
@@ -775,7 +762,6 @@ export default function App() {
     const currentScores = { ...scores };
     const sortedSoFar = sortForcesByWeakest(currentScores);
     const emerging = sortedSoFar[0]?.[0] ?? "essence";
-    const emergingScore = currentScores[emerging];
     const emergingMeta = FORCES.find((f) => f.id === emerging)!;
     const EmergingIcon = emergingMeta.icon;
 
