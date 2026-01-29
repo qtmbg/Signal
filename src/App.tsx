@@ -9,59 +9,50 @@ import {
   Layers,
   Cpu,
   Activity,
+  TrendingUp,
   Clock,
   Target,
   Send,
-  TrendingUp,
 } from "lucide-react";
 
 /**
- * QUANTUM BRANDING — SIGNAL OS (Hook-First) v3
- * Goal: emotionally strong insight, NOT an “audit-lite”.
- * - Fast truth (primary leak)
- * - One Today Move + 72h Sprint (light)
- * - Deeper assets (benchmarks/case/expanded plan) gated behind Email / Audit
- * - Strict TS + SSR-safe for Next/Vercel
+ * QTMBG — SIGNAL OS (Reframed)
+ * Goals:
+ * - Keep the conversion-optimized logic from your v2
+ * - Fix layout harmony on all viewports (no "dead space" feeling)
+ * - Remove foreign typography (no Syne/SpaceMono imports)
+ * - Use brand tokens (fonts/colors/lines) so it matches qtmbg.com
+ *
+ * Notes:
+ * - Set BRAND.fontSans / BRAND.fontMono to whatever qtmbg.com uses.
+ * - If qtmbg uses a hosted font, load it at the site level (not inside this app).
  */
 
-// ------------------------ TYPES ------------------------
+// ------------------------ BRAND TOKENS ------------------------
+
+const BRAND = {
+  // Set these to match qtmbg.com exactly.
+  // If you don’t know the exact font names, keep these and later replace.
+  fontSans:
+    'ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
+  fontMono:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+
+  // QTMBG tends to work best with “paper + ink” brutalism.
+  bg: "#F6F2EA",
+  ink: "#0A0A0A",
+  muted: "#5A5A5A",
+  soft: "#E7E1D7",
+  line: "#0A0A0A",
+  panel: "#FFFFFF",
+  panel2: "#FBF8F2",
+
+  // Accents (keep subtle)
+  accent: "#0A0A0A",
+};
 
 type ForceId = "essence" | "identity" | "offer" | "system" | "growth";
 type StageId = "launch" | "reposition" | "scale";
-type Choice = 1 | 3 | 5;
-type View = "start" | "scan" | "aha" | "result" | "email";
-
-type Question = {
-  force: ForceId;
-  text: string;
-  a: { v: Choice; label: string };
-  b: { v: Choice; label: string };
-  c: { v: Choice; label: string };
-};
-
-type LeakInfo = {
-  leakName: string;
-  humanSymptom: string;
-  whatItMeans: string;
-  todayMove: string;
-  sprint72h: string[]; // intentionally light
-  proofTease: string; // what they’ll get if they enter email
-  auditReason: string; // why audit is a different class
-};
-
-type State = {
-  stage: StageId;
-  idx: number;
-  answers: Partial<Record<ForceId, Choice>>;
-  view: View;
-  createdAtISO: string;
-  ahaShown: boolean;
-  email: string;
-  name: string;
-  website: string;
-};
-
-// ------------------------ CONFIG ------------------------
 
 const STORAGE_KEY = "qtmbg-signal-os-v3";
 
@@ -79,231 +70,332 @@ const FORCES: Array<{
 ];
 
 const STAGES: Array<{ id: StageId; label: string; sub: string }> = [
-  { id: "launch", label: "Launching", sub: "First demand + first offers" },
-  { id: "reposition", label: "Repositioning", sub: "Good work, unclear signal or audience" },
-  { id: "scale", label: "Scaling", sub: "Need throughput, not more hustle" },
+  { id: "launch", label: "Launching", sub: "Building first demand + first offers" },
+  { id: "reposition", label: "Repositioning", sub: "Good product, unclear signal or audience" },
+  { id: "scale", label: "Scaling", sub: "You need throughput, not more hustle" },
 ];
 
-// Hook questions are designed to identify the primary leak fast.
-// Scores stay internal; we show a simple “Signal Snapshot” on results.
+const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }>> = {
+  essence: {
+    launch: { avg: 42, top10: 73 },
+    reposition: { avg: 51, top10: 81 },
+    scale: { avg: 67, top10: 87 },
+  },
+  identity: {
+    launch: { avg: 38, top10: 70 },
+    reposition: { avg: 48, top10: 78 },
+    scale: { avg: 64, top10: 85 },
+  },
+  offer: {
+    launch: { avg: 45, top10: 75 },
+    reposition: { avg: 54, top10: 82 },
+    scale: { avg: 70, top10: 88 },
+  },
+  system: {
+    launch: { avg: 35, top10: 68 },
+    reposition: { avg: 46, top10: 76 },
+    scale: { avg: 62, top10: 84 },
+  },
+  growth: {
+    launch: { avg: 40, top10: 72 },
+    reposition: { avg: 50, top10: 80 },
+    scale: { avg: 66, top10: 86 },
+  },
+};
+
+type Choice = 1 | 3 | 5;
+
+type Question = {
+  force: ForceId;
+  text: string;
+  a: { v: Choice; label: string };
+  b: { v: Choice; label: string };
+  c: { v: Choice; label: string };
+};
+
 const QUESTIONS: Question[] = [
   {
     force: "essence",
-    text: "If I land on your brand today, do I instantly understand the mechanism you bring?",
-    a: { v: 1, label: "No — it sounds generic or interchangeable." },
-    b: { v: 3, label: "Somewhat — but it’s not named or sharp." },
-    c: { v: 5, label: "Yes — it’s specific, named, and repeatable." },
+    text: "If I land on your brand today, can I understand the unique mechanism you bring?",
+    a: { v: 1, label: "No — it sounds like generic services." },
+    b: { v: 3, label: "Somewhat — but it isn't named or sharp." },
+    c: { v: 5, label: "Yes — it's specific, named, and repeatable." },
   },
   {
     force: "identity",
     text: "Do you look and sound like a premium authority in your space?",
-    a: { v: 1, label: "Not yet — inconsistent or “template-ish”." },
+    a: { v: 1, label: "Not yet — it feels inconsistent." },
     b: { v: 3, label: "Clean — but not memorable or high-status." },
     c: { v: 5, label: "Yes — instantly premium and distinct." },
   },
   {
     force: "offer",
     text: "Is your flagship offer obvious and easy to choose?",
-    a: { v: 1, label: "No — custom, confusing, or too many options." },
-    b: { v: 3, label: "Kind of — people still hesitate or negotiate." },
+    a: { v: 1, label: "No — it's confusing or too many options." },
+    b: { v: 3, label: "Kind of — but people still hesitate." },
     c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
   },
   {
     force: "system",
-    text: "Is lead flow predictable (not luck-based) and follow-up controlled?",
+    text: "Is lead flow predictable and controlled (not luck-based)?",
     a: { v: 1, label: "No — feast/famine and manual chasing." },
     b: { v: 3, label: "Somewhat — referrals + occasional wins." },
-    c: { v: 5, label: "Yes — pipeline + nurture is repeatable." },
+    c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
   },
   {
     force: "growth",
-    text: "Do you have a single metric and rhythm that scales without burnout?",
-    a: { v: 1, label: "No — I react to urgency and bank balance." },
-    b: { v: 3, label: "Some — I track revenue but not leading signals." },
-    c: { v: 5, label: "Yes — clear north star + weekly loop." },
+    text: "Do you have a single metric and a plan that scales without burnout?",
+    a: { v: 1, label: "No — I react to urgency." },
+    b: { v: 3, label: "Some — I track revenue, not signal quality." },
+    c: { v: 5, label: "Yes — north star + weekly execution loop." },
   },
 ];
 
-// Specificity bomb stays, but we keep it short: 3 symptoms only.
 const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   essence: {
     launch: [
-      "Discovery calls turn into “so… what exactly do you do?”",
-      "You rewrite your homepage often because nothing feels sharp",
-      "You explain your value differently depending on the person",
+      "Calls turn into 'so what exactly do you do?' interrogations",
+      "You keep tweaking the homepage because it doesn’t feel sharp",
+      "You have multiple ways to explain your value depending on who asks",
     ],
     reposition: [
       "Referrals describe you differently than you describe yourself",
-      "Competitors with worse work charge more because their signal is clearer",
       "Your best clients came from an angle you haven’t fully owned",
+      "Competitors charge more because their positioning is clearer",
     ],
     scale: [
-      "Your team struggles to articulate what makes you different",
-      "Sales defaults to features instead of the core mechanism",
-      "Expansion feels risky because the story isn’t transferable",
+      "Team struggles to articulate what makes you different",
+      "Sales defaults to features instead of the mechanism",
+      "Expansion feels risky because the ‘what we do’ isn’t transferable",
     ],
   },
   identity: {
     launch: [
-      "You hesitate to share your website with certain prospects",
-      "Your visuals feel “good enough” but not investment-grade",
-      "People like your work but don’t see premium yet",
+      "You hesitate to share your website with premium prospects",
+      "Visuals feel ‘good enough’ but not investment-grade",
+      "People like your work but don’t perceive premium yet",
     ],
     reposition: [
-      "Your brand looks smaller than your actual expertise",
+      "Brand looks smaller than the level you operate at",
       "Prospects negotiate because you don’t look expensive",
       "You outgrew your identity but didn’t refresh it",
     ],
     scale: [
-      "Your brand doesn’t match the size of deals you want",
-      "Enterprise prospects hesitate on perceived credibility",
-      "Partnerships stall due to brand mis-match",
+      "Brand doesn’t match the size of deals you want",
+      "Enterprise hesitates due to perceived mismatch",
+      "Partnerships soften because perceived credibility isn’t clear",
     ],
   },
   offer: {
     launch: [
-      "People like you but say “let me think” and disappear",
-      "You create custom proposals for every deal",
-      "Pricing turns into negotiation too often",
+      "People like you but say ‘let me think’ then vanish",
+      "Custom proposals for every deal",
+      "Pricing becomes negotiation almost every time",
     ],
     reposition: [
-      "Too many offers creates decision paralysis",
-      "Your best clients bought something you don’t want to keep selling",
-      "Revenue exists but you don’t know what to double down on",
+      "Too many offers create decision paralysis",
+      "Your best clients bought something you don’t want to sell now",
+      "Revenue exists but you’re unsure what to scale",
     ],
     scale: [
-      "Offer architecture is hard to explain to your team",
-      "Upsells happen by accident, not by design",
-      "You leave money on the table because the path isn’t obvious",
+      "Offer architecture is too complex for the team to sell cleanly",
+      "Upsell/cross-sell happens by accident",
+      "The path isn’t obvious so money leaks",
     ],
   },
   system: {
     launch: [
-      "You’re busy, but cash flow isn’t predictable",
-      "Leads come from hustle, not a repeatable system",
-      "Follow-up slips because everything is manual",
+      "You’re busy but revenue isn’t predictable",
+      "Leads come from hustle + luck, not a system",
+      "Follow-ups slip because everything is manual",
     ],
     reposition: [
-      "You get attention but conversion is weak",
-      "Prospects leak between interest and purchase",
-      "Your pipeline tracking is inconsistent",
+      "You get attention but conversion is low",
+      "Leads leak between awareness and purchase",
+      "CRM is messy or missing",
     ],
     scale: [
-      "The system lives in your head, not in assets",
-      "Lead quality is inconsistent (gems + tire-kickers)",
-      "Pipeline is full but close rate drops as you grow",
+      "System lives in your head, not in assets",
+      "Lead quality is inconsistent",
+      "Close rate drops as volume increases",
     ],
   },
   growth: {
     launch: [
-      "You react to urgency instead of leading indicators",
-      "Every month feels like starting from zero",
-      "You chase tactics because there’s no clear loop",
+      "You react to cash instead of leading indicators",
+      "Each month feels like starting over",
+      "Shiny tactics because the plan isn’t clear",
     ],
     reposition: [
-      "Direction changes week to week",
-      "Growth comes in spurts, not consistently",
-      "You track revenue but not the signals that predict it",
+      "You move, but direction changes week to week",
+      "Growth comes in spurts, not consistency",
+      "You track revenue, not predictive signals",
     ],
     scale: [
-      "Scaling feels chaotic and exhausting",
-      "Adding budget doesn’t reliably increase output",
-      "You can’t identify the single bottleneck fast",
+      "Scaling feels chaotic and draining",
+      "More budget/people doesn’t reliably increase output",
+      "You can’t name the single bottleneck slowing everything down",
     ],
   },
 };
 
-// Leak intelligence now focuses on: truth + today move + 72h sprint.
-// Deeper breakdown promised behind email (benchmarks/case/expanded plan).
+const CASE_ANCHORS: Record<
+  ForceId,
+  {
+    name: string;
+    role: string;
+    before: string;
+    after: string;
+    mechanic: string;
+  }
+> = {
+  essence: {
+    name: "Client A",
+    role: "Agency founder",
+    before: "‘We do branding and strategy’ + long calls to explain value",
+    after: "Named mechanism + shorter cycles + higher close rate",
+    mechanic: "Extract the IP hidden in delivery, name it, make it the offer.",
+  },
+  identity: {
+    name: "Client B",
+    role: "B2B consultant",
+    before: "Template presence, constant negotiation",
+    after: "Upgraded touchpoints, premium perception rises",
+    mechanic: "Match identity to expertise level, not comfort zone.",
+  },
+  offer: {
+    name: "Client C",
+    role: "Service business",
+    before: "Too many offers, slow decisions",
+    after: "One flagship path, faster decisions",
+    mechanic: "Collapse into one obvious next step with constraints.",
+  },
+  system: {
+    name: "Client D",
+    role: "Founder",
+    before: "Feast/famine, manual follow-up",
+    after: "Repeatable nurture + predictable pipeline",
+    mechanic: "Build a simple path: viewer → lead → call → close → onboard.",
+  },
+  growth: {
+    name: "Client E",
+    role: "Operator",
+    before: "Reactive growth, constant switching",
+    after: "One metric + one channel focus",
+    mechanic: "Pick the lever that matters, ignore the rest for 90 days.",
+  },
+};
+
+type LeakInfo = {
+  leakName: string;
+  humanSymptom: string;
+  whatItMeans: string;
+  todayMove: string;
+  weekPlan: string[];
+  ifYouDont: string;
+  ifYouDo: string;
+  auditReason: string;
+};
+
 const LEAKS: Record<ForceId, LeakInfo> = {
   essence: {
     leakName: "BLURRY MECHANISM",
-    humanSymptom: 'People say: “Interesting… but what exactly do you do?”',
+    humanSymptom: 'People say: "Interesting… but what exactly do you do?"',
     whatItMeans:
-      "Your work may be strong, but the signal is noisy. If the mechanism isn’t named and repeatable, trust stays slow and price stays fragile.",
+      "Your value may be strong, but the signal is noisy. If the mechanism isn’t named and repeatable, trust stays slow and price stays fragile.",
     todayMove:
-      'Write ONE sentence and place it on your hero + bio: “I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME].”',
-    sprint72h: [
+      'Write ONE sentence and place it on your hero + bio: "I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME]."',
+    weekPlan: [
       "Name the mechanism (2–4 words). If you can’t name it, you don’t own it yet.",
-      "Rewrite your hero: Outcome + Mechanism + Proof + One CTA.",
-      "Publish one belief you own (a clear “this, not that”).",
+      "Rewrite hero: Outcome + Mechanism + Proof + One CTA.",
+      "Publish one belief you own (a clear ‘this, not that’).",
     ],
-    proofTease:
-      "Full breakdown includes: a mechanism naming framework, proof-stack prompts, and positioning examples matched to your stage.",
+    ifYouDont:
+      "You keep explaining instead of attracting. Calls feel like interviews. Revenue stays tied to hustle.",
+    ifYouDo:
+      "Inbound becomes pre-sold. Pricing becomes logical. People repeat your mechanism for you.",
     auditReason:
-      "The Audit turns your mechanism into a blueprint: positioning boundaries, proof stack, and a flagship offer path that makes premium pricing logical.",
+      "The Audit locks positioning: claims, repulsion, proof stack, and the assets that justify premium pricing.",
   },
   identity: {
     leakName: "STATUS GAP",
     humanSymptom: "You’re good, but you don’t look expensive yet.",
     whatItMeans:
-      "Your visual + verbal identity isn’t matching your expertise level. That gap creates negotiation, doubt, and “shopping around.”",
+      "Identity isn’t matching your expertise. That mismatch creates negotiation, doubt, and slower decisions.",
     todayMove:
-      "Replace soft claims with proof: outcomes, constraints, and one sharp line you truly stand behind.",
-    sprint72h: [
-      "Choose one signature element across assets (layout, typography rule, or tone).",
-      "Write one “truth post” explaining your model in plain language.",
-      "Upgrade your top 1 asset (homepage OR offer page) before posting more content.",
+      "Replace safe language with proof: constraints, outcomes, and one bold line you truly stand behind.",
+    weekPlan: [
+      "Pick one signature visual rule and apply it everywhere.",
+      "Write one model post: your contrarian framework.",
+      "Upgrade top assets: homepage, offer page, one case study.",
     ],
-    proofTease:
-      "Full breakdown includes: a credibility stack checklist and a messaging hierarchy to eliminate price justification.",
+    ifYouDont:
+      "You keep justifying price and getting compared to cheaper options.",
+    ifYouDo:
+      "Price objections soften. Premium clients self-select. Referrals come better-qualified.",
     auditReason:
-      "The Audit designs your authority system: proof order, high-status language rules, and the exact pages/assets to upgrade first.",
+      "The Audit identifies credibility gaps and installs a clear proof hierarchy across your touchpoints.",
   },
   offer: {
     leakName: "VALUE CONFUSION",
-    humanSymptom: "People like you… but don’t buy fast.",
+    humanSymptom: "People like you… but decisions are slow.",
     whatItMeans:
-      "Too much custom or too many options creates decision paralysis. Without one obvious flagship path, your close rate leaks.",
+      "No single obvious flagship path. Too many options or too much custom creates paralysis.",
     todayMove:
-      'Write this and enforce it: “This is for X. You get Y by Z. If you’re not X, do not apply.”',
-    sprint72h: [
-      "Collapse to one flagship + one entry/ascension step (no menu).",
-      "Rewrite pricing page: one path, one CTA, clear constraints.",
-      "Create one “before → after” breakdown of how the offer transforms the buyer.",
+      'Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
+    weekPlan: [
+      "Collapse into 1 flagship + 1 entry/ascension step.",
+      "Rewrite pricing page: one path, one CTA.",
+      "Publish one teardown that shows the after-state your offer creates.",
     ],
-    proofTease:
-      "Full breakdown includes: offer architecture templates and pricing logic that reduces hesitation.",
+    ifYouDont:
+      "You keep building proposals and hearing ‘let me think’. Close rate stays fragile.",
+    ifYouDo:
+      "Decision time drops. Conversion improves. Scarcity becomes real because the path is clear.",
     auditReason:
-      "The Audit outputs decisions + assets: flagship structure, pricing bands, offer page outline, and the conversion path tied to your stage.",
+      "The Audit aligns offer architecture, pricing logic, and conversion flow so buyers stop hesitating.",
   },
   system: {
     leakName: "PIPELINE FRICTION",
-    humanSymptom: "You’re always busy… but revenue isn’t predictable.",
+    humanSymptom: "You’re busy… but cash isn’t predictable.",
     whatItMeans:
-      "Attention isn’t the problem. The path is. If lead capture, follow-up, and filtering aren’t designed, results depend on luck and hustle.",
+      "The path from attention → cash leaks. You might have demand, but not control.",
     todayMove:
-      "Write your 6-step happy path: Viewer → Lead → Call → Close → Onboard → Referral. Identify the one step leaking most.",
-    sprint72h: [
-      "Add one capture point + one follow-up email (minimum viable nurture).",
-      "Add one filter question to repel bad fits before calls.",
-      "Define a weekly rhythm: proof → CTA → follow-up (repeat).",
+      "Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.",
+    weekPlan: [
+      "Install one lead capture + one follow-up email.",
+      "Add one booking filter question to repel bad fits.",
+      "Create one weekly nurture loop: proof + CTA.",
     ],
-    proofTease:
-      "Full breakdown includes: funnel leak map prompts and a simple nurture sequence you can paste today.",
+    ifYouDont:
+      "Revenue remains random. Scaling becomes ‘work more’, not ‘system better’.",
+    ifYouDo:
+      "You can forecast. You know what inputs create cash. You scale without chaos.",
     auditReason:
-      "The Audit maps the exact leak and prescribes the first fix with assets: copy blocks, funnel steps, and priorities (not generic advice).",
+      "The Audit maps the exact leak: where prospects drop, why, and what to change first.",
   },
   growth: {
     leakName: "NO NORTH STAR",
-    humanSymptom: "You’re making moves… but direction keeps changing.",
+    humanSymptom: "You’re moving… but direction keeps shifting.",
     whatItMeans:
-      "Without one leading metric and a weekly loop, growth becomes emotional. You’ll keep switching tactics before anything compounds.",
+      "No clean metric + rhythm. Growth becomes reactive and exhausting.",
     todayMove:
-      "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV). Track it weekly on the same day.",
-    sprint72h: [
-      "Choose one channel to dominate for 30 days (ignore everything else).",
-      "Install one referral trigger at the moment of “first win.”",
-      "Run a weekly review: metric → bottleneck → one fix → repeat.",
+      "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV) and track it weekly.",
+    weekPlan: [
+      "Choose one channel to dominate for 30 days.",
+      "Add one referral trigger at the moment of ‘first win’.",
+      "Weekly review: metric → bottleneck → one fix → repeat.",
     ],
-    proofTease:
-      "Full breakdown includes: metric selection rules and a weekly operating loop that keeps execution stable.",
+    ifYouDont:
+      "You keep chasing tactics and feeling behind. Momentum stays inconsistent.",
+    ifYouDo:
+      "Decisions become obvious. You build compounding momentum instead of frantic output.",
     auditReason:
-      "The Audit identifies the single lever to optimize first (signal vs offer vs system) and builds a 30-day execution plan with your constraints.",
+      "The Audit identifies what to optimize first so you scale without chaos: signal, offer, or system.",
   },
 };
 
-// ------------------------ HELPERS ------------------------
+// ------------------------ UTIL ------------------------
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -315,25 +407,42 @@ function pctFromChoice(v: Choice) {
   return 100;
 }
 
-function bandLabel(pct: number) {
-  if (pct >= 80) return "STRONG";
-  if (pct >= 55) return "UNSTABLE";
-  return "CRITICAL";
-}
-
 function sortForcesByWeakest(scores: Record<ForceId, number>) {
   const pairs = (Object.keys(scores) as ForceId[]).map((k) => [k, scores[k]] as const);
   return pairs.sort((a, b) => a[1] - b[1]);
 }
 
-function canUseBrowserAPIs() {
-  return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
-}
+type View = "start" | "scan" | "aha" | "result" | "email";
+
+type State = {
+  stage: StageId;
+  idx: number;
+  answers: Partial<Record<ForceId, Choice>>;
+  view: View;
+  createdAtISO: string;
+  ahaShown: boolean;
+  email: string;
+  name: string;
+  website: string;
+  emailSent: boolean;
+};
+
+const DEFAULT_STATE: State = {
+  stage: "launch",
+  idx: 0,
+  answers: {},
+  view: "start",
+  createdAtISO: new Date().toISOString(),
+  ahaShown: false,
+  email: "",
+  name: "",
+  website: "",
+  emailSent: false,
+};
 
 function loadState(): State | null {
-  if (!canUseBrowserAPIs()) return null;
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as State;
   } catch {
@@ -342,51 +451,52 @@ function loadState(): State | null {
 }
 
 function saveState(s: State) {
-  if (!canUseBrowserAPIs()) return;
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
     // ignore
   }
 }
 
-function removeState() {
-  if (!canUseBrowserAPIs()) return;
-  try {
-    window.localStorage.removeItem(STORAGE_KEY);
-  } catch {
-    // ignore
-  }
+function bandLabel(pct: number) {
+  if (pct >= 80) return "STRONG";
+  if (pct >= 55) return "UNSTABLE";
+  return "CRITICAL";
 }
-
-// ------------------------ TIMER ------------------------
 
 function useDecayTimer(createdAt: string) {
-  const [now, setNow] = useState<number>(() => Date.now());
-
+  const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    const interval = window.setInterval(() => setNow(Date.now()), 1000);
-    return () => window.clearInterval(interval);
+    const i = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(i);
   }, []);
-
   const created = new Date(createdAt).getTime();
-  const expires = created + 48 * 60 * 60 * 1000; // 48h
+  const expires = created + 48 * 60 * 60 * 1000;
   const remaining = Math.max(0, expires - now);
-
   const hours = Math.floor(remaining / (60 * 60 * 1000));
   const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
   const secs = Math.floor((remaining % (60 * 1000)) / 1000);
-
   return { hours, mins, secs, expired: remaining === 0 };
 }
 
-// ------------------------ UI PRIMITIVES ------------------------
+// ------------------------ UI ------------------------
 
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="qbg">
       <style>{CSS}</style>
-      <div className="wrap">{children}</div>
+      <div className="wrap">
+        <div className="content">{children}</div>
+        <div className="footer">
+          <div className="footerRail" />
+          <div className="footerMeta">
+            <span className="footerTag">QTMBG</span>
+            <span className="footerText">
+              Signal OS is a scan, not a full audit. Use it to convert insight into action.
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -395,10 +505,10 @@ function HeaderMini() {
   return (
     <div className="top">
       <div className="brand">
-        <span className="pill">Quantum Branding</span>
+        <span className="pill">QUANTUM BRANDING</span>
         <span className="muted">Signal OS</span>
       </div>
-      <div className="muted tiny">90 sec • 5 Forces • Find your primary leak</div>
+      <div className="muted tiny">90 sec • 5 forces • primary leak</div>
     </div>
   );
 }
@@ -428,7 +538,7 @@ function Btn({
       disabled={disabled}
     >
       {icon}
-      {children}
+      <span className="btnText">{children}</span>
       <ArrowRight size={16} />
     </button>
   );
@@ -471,16 +581,14 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 function DecayTimer({ createdAt }: { createdAt: string }) {
   const { hours, mins, secs, expired } = useDecayTimer(createdAt);
-
   if (expired) {
     return (
       <div className="timer expired">
         <Clock size={14} />
-        <span>Analysis expired — retake scan for fresh insights</span>
+        <span>Insights expired — retake scan for a fresh read</span>
       </div>
     );
   }
-
   return (
     <div className="timer">
       <Clock size={14} />
@@ -495,21 +603,7 @@ function DecayTimer({ createdAt }: { createdAt: string }) {
   );
 }
 
-// ------------------------ DEFAULT STATE ------------------------
-
-const DEFAULT_STATE: State = {
-  stage: "launch",
-  idx: 0,
-  answers: {},
-  view: "start",
-  createdAtISO: new Date().toISOString(),
-  ahaShown: false,
-  email: "",
-  name: "",
-  website: "",
-};
-
-// ------------------------ MAIN APP ------------------------
+// ------------------------ MAIN ------------------------
 
 export default function App() {
   const hydrated = useMemo(() => loadState(), []);
@@ -551,6 +645,7 @@ export default function App() {
       answers: {},
       ahaShown: false,
       createdAtISO: new Date().toISOString(),
+      emailSent: false,
     }));
   };
 
@@ -559,97 +654,48 @@ export default function App() {
       const nextAnswers = { ...prev.answers, [force]: v };
       const nextIdx = prev.idx + 1;
 
-      // AHA at question 2 (after 2 answers)
       if (nextIdx === 2 && !prev.ahaShown) {
-        return {
-          ...prev,
-          answers: nextAnswers,
-          idx: nextIdx,
-          view: "aha",
-        };
+        return { ...prev, answers: nextAnswers, idx: nextIdx, view: "aha" };
       }
 
-      // completed
       if (nextIdx >= total) {
-        return {
-          ...prev,
-          answers: nextAnswers,
-          idx: prev.idx,
-          view: "result",
-        };
+        return { ...prev, answers: nextAnswers, idx: prev.idx, view: "result" };
       }
 
-      return {
-        ...prev,
-        answers: nextAnswers,
-        idx: nextIdx,
-      };
+      return { ...prev, answers: nextAnswers, idx: nextIdx };
     });
   };
 
-  const continueFromAha = () => {
-    setState((prev) => ({
-      ...prev,
-      view: "scan",
-      ahaShown: true,
-    }));
-  };
+  const continueFromAha = () => setState((p) => ({ ...p, view: "scan", ahaShown: true }));
 
-  const goBack = () => {
-    setState((prev) => ({
-      ...prev,
-      idx: Math.max(0, prev.idx - 1),
-    }));
-  };
+  const goBack = () => setState((p) => ({ ...p, idx: Math.max(0, p.idx - 1) }));
 
   const restart = () => {
-    removeState();
-    setState({
-      ...DEFAULT_STATE,
-      createdAtISO: new Date().toISOString(),
-    });
+    localStorage.removeItem(STORAGE_KEY);
+    setState({ ...DEFAULT_STATE, createdAtISO: new Date().toISOString() });
   };
 
-  const toEmail = () => setState((prev) => ({ ...prev, view: "email" }));
+  const toEmail = () => setState((p) => ({ ...p, view: "email" }));
 
   const submitEmail = () => {
-    // TODO: replace with your actual endpoint (Zapier/Make/Klaviyo/your API).
-    // Keep it SSR-safe:
-    if (typeof window !== "undefined") {
-      // eslint-disable-next-line no-console
-      console.log("Signal capture:", {
-        email: state.email,
-        name: state.name,
-        website: state.website,
-        stage: state.stage,
-        primary: diagnosis.primary,
-        secondary: diagnosis.secondary,
-        scores,
-        createdAtISO: state.createdAtISO,
-      });
-
-      window.alert(
-        `Done. You’ll receive the full breakdown (deeper examples + assets) at ${state.email}.`
-      );
-    }
-
-    setState((prev) => ({ ...prev, view: "result" }));
+    // Replace with real API call later.
+    setState((p) => ({ ...p, emailSent: true }));
+    setTimeout(() => {
+      setState((p) => ({ ...p, view: "result" }));
+    }, 700);
   };
 
   const toAudit = () => {
-    if (typeof window === "undefined") return;
-
     const params = new URLSearchParams({
       from: "signal",
       stage: state.stage,
       primary: diagnosis.primary,
       secondary: diagnosis.secondary,
       scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(","),
-      ...(state.name ? { name: state.name } : {}),
-      ...(state.email ? { email: state.email } : {}),
-      ...(state.website ? { website: state.website } : {}),
+      ...(state.name && { name: state.name }),
+      ...(state.email && { email: state.email }),
+      ...(state.website && { website: state.website }),
     });
-
     window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
   };
 
@@ -661,9 +707,10 @@ export default function App() {
         <HeaderMini />
 
         <div className="hero">
-          <div className="h1">Find the one leak weakening your brand right now.</div>
+          <div className="kicker">Signal Scan</div>
+          <div className="h1">Find the one thing weakening your brand right now.</div>
           <div className="sub">
-            90 seconds. 5 questions. You’ll get your primary leak plus the next move.
+            90 seconds. 5 questions. You get your primary leak and the next move.
             <br />
             <b>No email required to see results.</b>
           </div>
@@ -674,22 +721,22 @@ export default function App() {
 
           <div className="ctaRow">
             <Btn variant="primary" onClick={startScan} icon={<Zap size={16} />}>
-              Start the Signal Scan
+              Start the scan
             </Btn>
           </div>
 
           <div className="trust">
             <div className="trustItem">
               <CheckCircle2 size={14} />
-              <span>Fast truth, no fluff</span>
+              <span>Value first</span>
             </div>
             <div className="trustItem">
               <CheckCircle2 size={14} />
-              <span>Today move + 72h sprint</span>
+              <span>Actionable today + this week</span>
             </div>
             <div className="trustItem">
               <CheckCircle2 size={14} />
-              <span>Audit is optional (different class)</span>
+              <span>Built for conversion, not trivia</span>
             </div>
           </div>
         </Card>
@@ -698,11 +745,10 @@ export default function App() {
   }
 
   if (state.view === "aha") {
-    // “Emerging” is only a hint; we keep it humble and short.
-    const sortedSoFar = sortForcesByWeakest(scores);
+    const sortedSoFar = sortForcesByWeakest({ ...scores });
     const emerging = sortedSoFar[0]?.[0] ?? "essence";
-    const meta = FORCES.find((f) => f.id === emerging)!;
-    const Icon = meta.icon;
+    const emergingMeta = FORCES.find((f) => f.id === emerging)!;
+    const EmergingIcon = emergingMeta.icon;
 
     return (
       <AppShell>
@@ -710,38 +756,41 @@ export default function App() {
 
         <Card className="aha">
           <div className="ahaIcon">
-            <Target size={32} />
+            <Target size={22} />
           </div>
 
           <div className="ahaTitle">Pattern detected.</div>
-
           <div className="ahaText">
-            Early signal suggests the leak may be in <strong>{meta.label}</strong>.
+            Based on your first answers, your signal likely leaks in <strong>{emergingMeta.label}</strong>.
           </div>
 
           <div className="ahaForce">
-            <Icon size={20} />
+            <EmergingIcon size={18} />
             <div>
-              <div className="ahaForceName">{meta.label}</div>
-              <div className="tiny muted">{meta.micro}</div>
+              <div className="ahaForceName">{emergingMeta.label}</div>
+              <div className="tiny muted">{emergingMeta.micro}</div>
             </div>
           </div>
 
           <div className="ahaHint">
-            Keep going. The next questions confirm whether this is the real bottleneck or just noise.
+            {emerging === "essence" && "Usually: mechanism isn’t named or sharp enough to create instant trust."}
+            {emerging === "identity" && "Usually: identity doesn’t match the level you want to charge."}
+            {emerging === "offer" && "Usually: no obvious flagship path, too much choice."}
+            {emerging === "system" && "Usually: lead flow is not controlled, too much luck."}
+            {emerging === "growth" && "Usually: no metric rhythm, decisions stay reactive."}
           </div>
 
           <div className="ctaRow">
             <Btn variant="primary" onClick={continueFromAha}>
-              Continue
+              Confirm it
             </Btn>
             <Btn variant="secondary" onClick={continueFromAha}>
-              Continue (not sure)
+              Keep going
             </Btn>
           </div>
 
           <div className="tiny muted">
-            This is a lightweight scan. The Audit is where decisions + assets get built.
+            The next questions confirm or refine the diagnosis.
           </div>
         </Card>
       </AppShell>
@@ -763,14 +812,13 @@ export default function App() {
               Question {state.idx + 1} / {total}
             </div>
             <div className="forceLine">
-              <Icon size={18} />
+              <Icon size={16} />
               <div>
                 <div className="forceName">{forceMeta.label}</div>
                 <div className="tiny muted">{forceMeta.micro}</div>
               </div>
             </div>
           </div>
-
           <div className="scanRight">
             <button className="link" type="button" onClick={goBack} disabled={state.idx === 0}>
               Back
@@ -814,19 +862,15 @@ export default function App() {
   }
 
   if (state.view === "email") {
-    const primary = diagnosis.primary;
-    const leak = LEAKS[primary];
-
     return (
       <AppShell>
         <HeaderMini />
 
         <div className="hero">
-          <div className="h1">Get the deeper breakdown (assets + examples).</div>
+          <div className="kicker">Optional</div>
+          <div className="h1">Email the full breakdown</div>
           <div className="sub">
-            You already have your leak. This email unlocks the deeper layer:
-            <br />
-            <b>{leak.proofTease}</b>
+            Get the complete leak analysis + benchmarks + a short walkthrough video.
           </div>
         </div>
 
@@ -875,43 +919,48 @@ export default function App() {
             <Btn
               variant="primary"
               onClick={submitEmail}
-              disabled={!state.email}
+              disabled={!state.email || state.emailSent}
               icon={<Send size={16} />}
             >
-              Email me the deeper breakdown
+              {state.emailSent ? "Sent" : "Send it"}
             </Btn>
 
             <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: "result" }))}>
-              Skip for now
+              Skip
             </button>
           </div>
 
-          <div className="tiny muted">No spam. Just the deeper layer and execution prompts.</div>
+          <div className="tiny muted">
+            No spam. Only the breakdown. Unsubscribe anytime.
+          </div>
         </Card>
       </AppShell>
     );
   }
 
-  // ------------------------ RESULT ------------------------
-
+  // RESULT
   const primary = diagnosis.primary;
   const secondary = diagnosis.secondary;
   const primaryInfo = LEAKS[primary];
-  const symptoms = MICRO_SYMPTOMS[primary][state.stage].slice(0, 3);
+  const primaryMeta = FORCES.find((f) => f.id === primary)!;
+  const caseAnchor = CASE_ANCHORS[primary];
+  const symptoms = MICRO_SYMPTOMS[primary][state.stage];
+  const benchmark = BENCHMARKS[primary][state.stage];
+  const primaryScore = scores[primary];
+  const gap = benchmark.avg - primaryScore;
+  const topGap = benchmark.top10 - primaryScore;
 
   return (
     <AppShell>
       <HeaderMini />
-
       <DecayTimer createdAt={state.createdAtISO} />
 
       <div className="hero">
         <div className="kicker">Your Primary Leak</div>
-        <div className="h1 leak">{primaryInfo.leakName}</div>
+        <div className="leakBox">{primaryInfo.leakName}</div>
         <div className="sub">{primaryInfo.humanSymptom}</div>
       </div>
 
-      {/* Specificity bomb, but light */}
       <Card className="symptoms">
         <div className="symptomsTitle">If this is true, you’ll recognize these:</div>
         <div className="symptomList">
@@ -933,41 +982,82 @@ export default function App() {
             <div className="panelTitle mt">Today move</div>
             <div className="panelText strong">{primaryInfo.todayMove}</div>
 
-            <div className="panelTitle mt">72h sprint (keep it simple)</div>
+            <div className="panelTitle mt">7-day micro-plan</div>
             <ul className="list">
-              {primaryInfo.sprint72h.map((w, i) => (
+              {primaryInfo.weekPlan.map((w, i) => (
                 <li key={i}>{w}</li>
               ))}
             </ul>
 
-            <div className="divider" />
-
-            <div className="panelTitle">Important</div>
+            <div className="panelTitle mt">How you compare</div>
+            <div className="benchmark">
+              <div className="benchRow">
+                <span className="benchLabel">Your {primaryMeta.label}:</span>
+                <span className="benchValue">{primaryScore}</span>
+              </div>
+              <div className="benchRow">
+                <span className="benchLabel">Stage average:</span>
+                <span className="benchValue">{benchmark.avg}</span>
+              </div>
+              <div className="benchRow strong">
+                <span className="benchLabel">Top 10%:</span>
+                <span className="benchValue">{benchmark.top10}</span>
+              </div>
+            </div>
             <div className="panelText small">
-              This is a <strong>signal scan</strong>, not a full audit. It tells you <strong>where you leak</strong>.
-              The Audit is where we build <strong>decisions + assets</strong> so you can execute.
+              You are <strong>{Math.abs(gap)} points</strong> {gap < 0 ? "above" : "below"} average and{" "}
+              <strong>{Math.abs(topGap)} points</strong> from premium positioning.
+            </div>
+
+            <div className="outcomes">
+              <div className="outcome bad">
+                <div className="outcomeLabel">If you don’t fix this:</div>
+                <div className="outcomeText">{primaryInfo.ifYouDont}</div>
+              </div>
+              <div className="outcome good">
+                <div className="outcomeLabel">If you do:</div>
+                <div className="outcomeText">{primaryInfo.ifYouDo}</div>
+              </div>
+            </div>
+
+            <div className="panelTitle mt">Important</div>
+            <div className="panelText small">
+              This is a signal scan. Not a full audit. It tells you where you leak. The Audit is where we build decisions + assets.
             </div>
           </div>
 
           <div className="panel soft">
-            <div className="panelTitle">Signal snapshot</div>
+            <div className="caseAnchor">
+              <div className="caseTitle">What fixing it looks like:</div>
+              <div className="caseName">
+                {caseAnchor.name} — {caseAnchor.role}
+              </div>
+              <div className="caseRow">
+                <span className="caseLabel">Before:</span>
+                <span className="caseValue">{caseAnchor.before}</span>
+              </div>
+              <div className="caseRow">
+                <span className="caseLabel">After:</span>
+                <span className="caseValue highlight">{caseAnchor.after}</span>
+              </div>
+              <div className="caseMechanic">{caseAnchor.mechanic}</div>
+            </div>
 
+            <div className="divider" />
+
+            <div className="panelTitle">Signal snapshot</div>
             <div className="bars">
               {(Object.keys(scores) as ForceId[]).map((f) => {
                 const meta = FORCES.find((x) => x.id === f)!;
                 const pct = scores[f];
                 const isPrimary = f === primary;
                 const isSecondary = f === secondary;
-
                 const tag = isPrimary ? "PRIMARY LEAK" : isSecondary ? "SECONDARY" : bandLabel(pct);
-
                 return (
                   <div key={f} className="barRow">
                     <div className="barLeft">
                       <div className="barName">{meta.label}</div>
-                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>
-                        {tag}
-                      </div>
+                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>{tag}</div>
                     </div>
                     <div className="barWrap">
                       <div className="barIn" style={{ width: `${pct}%` }} />
@@ -979,9 +1069,7 @@ export default function App() {
             </div>
 
             <div className="panelTitle mt">Next step options</div>
-            <div className="panelText small">
-              Pick one. Don’t collect insights. Convert them into action.
-            </div>
+            <div className="panelText small">{primaryInfo.auditReason}</div>
 
             <div className="commitLadder">
               <button className="commitStep" type="button" onClick={toEmail}>
@@ -989,8 +1077,8 @@ export default function App() {
                   <Send size={18} />
                 </div>
                 <div className="commitContent">
-                  <div className="commitTitle">Email me the deeper breakdown</div>
-                  <div className="commitSub">Free • Assets + examples matched to your stage</div>
+                  <div className="commitTitle">Email me the breakdown</div>
+                  <div className="commitSub">Free • Save this analysis</div>
                 </div>
                 <ChevronRight size={18} />
               </button>
@@ -1000,8 +1088,8 @@ export default function App() {
                   <TrendingUp size={18} />
                 </div>
                 <div className="commitContent">
-                  <div className="commitTitle">Book a 15-min Leak Review</div>
-                  <div className="commitSub">Free • Confirm the leak on your site live</div>
+                  <div className="commitTitle">Book a 15-min leak review</div>
+                  <div className="commitSub">Free • Confirm the leak on your site</div>
                 </div>
                 <ChevronRight size={18} />
               </button>
@@ -1011,8 +1099,8 @@ export default function App() {
                   <Zap size={18} />
                 </div>
                 <div className="commitContent">
-                  <div className="commitTitle">Run the Full Brand Audit</div>
-                  <div className="commitSub">Blueprint + priorities + assets to execute</div>
+                  <div className="commitTitle">Run the full Brand Audit</div>
+                  <div className="commitSub">Diagnosis + fix plan + implementation</div>
                 </div>
                 <ArrowRight size={18} />
               </button>
@@ -1035,22 +1123,47 @@ export default function App() {
 // ------------------------ CSS ------------------------
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+:root{
+  --bg:${BRAND.bg};
+  --ink:${BRAND.ink};
+  --muted:${BRAND.muted};
+  --soft:${BRAND.soft};
+  --line:${BRAND.line};
+  --panel:${BRAND.panel};
+  --panel2:${BRAND.panel2};
+  --sans:${BRAND.fontSans};
+  --mono:${BRAND.fontMono};
+}
 
 *{margin:0;padding:0;box-sizing:border-box;}
 
 .qbg{
   min-height:100vh;
-  background:#0a0a0a;
-  color:#f5f5f5;
-  font-family: 'Space Mono', ui-monospace, monospace;
+  color:var(--ink);
+  background: var(--bg);
+  font-family: var(--sans);
   line-height:1.5;
+
+  /* subtle specimen grid so “empty space” feels designed */
+  background-image:
+    linear-gradient(to right, rgba(10,10,10,0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(10,10,10,0.05) 1px, transparent 1px);
+  background-size: 56px 56px;
 }
 
 .wrap{
-  max-width: 1100px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 32px 20px 80px;
+  padding: 28px 18px 18px;
+
+  /* full-height layout: eliminates “dead space” feeling */
+  min-height: 100vh;
+  display:flex;
+  flex-direction:column;
+}
+
+.content{
+  flex:1;
 }
 
 .top{
@@ -1058,182 +1171,223 @@ const CSS = `
   align-items:flex-end;
   justify-content:space-between;
   gap:16px;
-  padding-bottom: 20px;
-  border-bottom:2px solid #f5f5f5;
-  margin-bottom: 24px;
+  padding-bottom: 14px;
+  border-bottom:1px solid var(--line);
+  margin-bottom: 18px;
 }
 
 .brand{ display:flex; align-items:center; gap:12px; }
-
 .pill{
-  border:2px solid #f5f5f5;
-  padding:8px 14px;
+  border:1px solid var(--line);
+  padding:7px 10px;
   font-size:10px;
   letter-spacing:.22em;
   text-transform:uppercase;
   font-weight:700;
-  background:#f5f5f5;
-  color:#0a0a0a;
+  background:var(--ink);
+  color:var(--bg);
+  font-family: var(--mono);
 }
 
-.muted{ color:#999; }
+.muted{ color:var(--muted); }
 .tiny{ font-size:11px; line-height:1.4; }
 .small{ font-size:13px; line-height:1.5; }
+.mt{ margin-top: 16px; }
 
-.hero{ padding: 24px 0; max-width: 900px; }
+.hero{ padding: 18px 0; max-width: 920px; }
 
 .kicker{
   font-size:11px;
   letter-spacing:.24em;
   text-transform:uppercase;
-  color:#999;
-  margin-bottom:12px;
+  color:var(--muted);
+  margin-bottom:10px;
   font-weight:700;
+  font-family: var(--mono);
 }
 
 .h1{
-  font-family: 'Syne', sans-serif;
-  font-size: clamp(32px, 5vw, 64px);
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-  font-weight: 800;
-  background: linear-gradient(135deg, #f5f5f5 0%, #999 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.h1.leak{
-  border:2px solid #f5f5f5;
-  display:inline-block;
-  padding:14px 20px;
-  margin-top:8px;
-  background: #f5f5f5;
-  color:#0a0a0a;
-  -webkit-text-fill-color: #0a0a0a;
+  font-size: clamp(26px, 3.6vw, 44px);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-weight: 700;
 }
 
 .sub{
-  margin-top:16px;
+  margin-top:12px;
   font-size:15px;
-  line-height:1.6;
-  color:#ccc;
+  line-height:1.65;
+  color:var(--muted);
   max-width: 760px;
 }
-.sub b{ color:#f5f5f5; font-weight:700; }
+
+.sub b{ color:var(--ink); font-weight:700; }
+
+.leakBox{
+  display:inline-block;
+  margin-top:6px;
+  border:1px solid var(--line);
+  background: var(--ink);
+  color: var(--bg);
+  padding: 10px 14px;
+  font-family: var(--mono);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
 
 .card{
-  border:2px solid #f5f5f5;
-  padding: 24px;
-  background:#0a0a0a;
-  margin-bottom:16px;
+  border:1px solid var(--line);
+  padding: 18px;
+  background: var(--panel);
+  margin-bottom:14px;
 }
 
-.card.aha{
-  background: linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%);
-  border-color:#666;
-  text-align:center;
-}
+.card.aha{ background: var(--panel2); }
 
-.card.symptoms{ background:#111; border-color:#333; }
+.card.symptoms{
+  background: var(--panel2);
+}
 
 .grid2{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap:16px;
+  gap:14px;
 }
-@media (max-width: 720px){ .grid2{ grid-template-columns: 1fr; } }
 
-.field{ margin-bottom: 16px; }
+@media (max-width: 720px){
+  .grid2{ grid-template-columns: 1fr; }
+}
+
+.field{ margin-bottom: 14px; }
 
 .label{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color:#999;
+  color:var(--muted);
   margin-bottom:10px;
   font-weight:700;
+  font-family: var(--mono);
 }
-.req{ color:#f5f5f5; }
+
+.req{ color:var(--ink); }
 
 .input{
   width:100%;
-  border: none;
-  border-bottom:2px solid #f5f5f5;
-  padding:12px 4px;
+  border:1px solid var(--line);
+  padding:12px 10px;
   font-size:15px;
   outline:none;
   background:transparent;
-  color:#f5f5f5;
-  font-family: 'Space Mono', monospace;
+  color:var(--ink);
+  font-family: var(--sans);
 }
-.input::placeholder{ color:#666; }
 
-.stageGrid{ display:grid; grid-template-columns: 1fr; gap:12px; }
+.input::placeholder{ color:rgba(10,10,10,.45); }
+
+.stageGrid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
 
 .stage{
-  border:2px solid #f5f5f5;
-  padding:16px;
+  border:1px solid var(--line);
+  padding:14px;
   text-align:left;
-  background:#0a0a0a;
-  transition: all .2s cubic-bezier(.4,0,.2,1);
+  background:transparent;
   cursor:pointer;
-  font-family: 'Space Mono', monospace;
+  font-family: var(--sans);
 }
-.stage:hover{ transform: translateX(4px); background:#1a1a1a; }
-.stage.active{ background:#f5f5f5; color:#0a0a0a; }
-.stage.active .muted{ color:#666; }
 
-.stageTitle{ font-weight:700; letter-spacing:-0.01em; font-size:16px; }
+.stage:hover{ background: var(--panel2); }
+
+.stage.active{
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.stage.active .muted{ color: rgba(246,242,234,.75); }
+
+.stageTitle{
+  font-weight:700;
+  letter-spacing:-0.01em;
+  font-size:16px;
+}
 
 .btn{
-  border:2px solid #f5f5f5;
-  padding:14px 18px;
+  border:1px solid var(--line);
+  padding:12px 14px;
   display:inline-flex;
   align-items:center;
-  gap:12px;
-  text-transform:uppercase;
+  gap:10px;
   letter-spacing:.18em;
   font-size:11px;
   cursor:pointer;
-  transition: all .2s cubic-bezier(.4,0,.2,1);
-  font-family: 'Space Mono', monospace;
+  font-family: var(--mono);
   font-weight:700;
+  text-transform: uppercase;
 }
-.btn.primary{ background:#f5f5f5; color:#0a0a0a; }
-.btn.primary:hover{
-  background:#0a0a0a;
-  color:#f5f5f5;
-  transform:translateY(-2px);
-  box-shadow: 0 8px 16px rgba(245,245,245,0.1);
+
+.btnText{ letter-spacing:.16em; }
+
+.btn.primary{
+  background:var(--ink);
+  color:var(--bg);
 }
-.btn.secondary{ background:#0a0a0a; color:#f5f5f5; }
-.btn.secondary:hover{ background:#f5f5f5; color:#0a0a0a; }
-.btn.disabled{ opacity:.3; cursor:not-allowed; }
+
+.btn.primary:hover{ opacity:.92; }
+
+.btn.secondary{
+  background:transparent;
+  color:var(--ink);
+}
+
+.btn.secondary:hover{ background: var(--panel2); }
+
+.btn.disabled{
+  opacity:.35;
+  cursor:not-allowed;
+}
 
 .link{
   background:transparent;
   border:none;
   padding:0;
-  color:#999;
+  color:var(--muted);
   text-decoration: underline;
   cursor:pointer;
-  font-family: 'Space Mono', monospace;
+  font-family: var(--mono);
   font-size:12px;
 }
-.link:hover{ color:#f5f5f5; }
+
+.link:hover{ color:var(--ink); }
 
 .ctaRow{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:16px;
-  margin-top: 8px;
+  gap:14px;
+  margin-top: 6px;
   flex-wrap:wrap;
 }
 
-.trust{ display:flex; gap:20px; margin-top:20px; flex-wrap:wrap; }
-.trustItem{ display:flex; align-items:center; gap:8px; font-size:12px; color:#ccc; }
+.trust{
+  display:flex;
+  gap:18px;
+  margin-top:16px;
+  flex-wrap:wrap;
+}
+
+.trustItem{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-size:12px;
+  color:var(--muted);
+  font-family: var(--mono);
+}
 
 .scanHead{
   display:flex;
@@ -1242,25 +1396,38 @@ const CSS = `
   gap:16px;
   margin-bottom: 12px;
 }
-.scanLeft .kicker{ margin-bottom:10px; }
 
-.forceLine{ display:flex; gap:12px; align-items:flex-start; }
-.forceName{ font-weight:700; letter-spacing:.08em; font-size:14px; }
-
-.progress{ width:100%; height:3px; background:#333; margin-bottom: 20px; overflow:hidden; }
-.progressIn{ height:3px; background:#f5f5f5; transition: width .3s cubic-bezier(.4,0,.2,1); }
-
-.qText{
-  font-family: 'Syne', sans-serif;
-  font-size: 22px;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  font-weight: 600;
-  margin-bottom: 20px;
-  color:#f5f5f5;
+.forceLine{ display:flex; gap:10px; align-items:flex-start; }
+.forceName{
+  font-weight:800;
+  letter-spacing:.12em;
+  font-size:12px;
+  font-family: var(--mono);
 }
 
-.choices{ display:flex; flex-direction:column; gap:12px; }
+.progress{
+  width:100%;
+  height:2px;
+  background: rgba(10,10,10,.12);
+  margin-bottom: 16px;
+  overflow:hidden;
+}
+
+.progressIn{
+  height:2px;
+  background: var(--ink);
+  transition: width .25s ease;
+}
+
+.qText{
+  font-size: 18px;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.choices{ display:flex; flex-direction:column; gap:10px; }
 
 .choice{
   display:flex;
@@ -1268,240 +1435,287 @@ const CSS = `
   gap:12px;
   width:100%;
   text-align:left;
-  border:2px solid #f5f5f5;
-  background:#0a0a0a;
-  padding:16px;
+  border:1px solid var(--line);
+  background:transparent;
+  padding:14px;
   cursor:pointer;
-  transition: all .2s cubic-bezier(.4,0,.2,1);
-  font-family: 'Space Mono', monospace;
+  font-family: var(--sans);
 }
-.choice:hover{ transform: translateX(6px); background:#f5f5f5; color:#0a0a0a; }
+
+.choice:hover{ background: var(--panel2); }
 
 .choiceDot{
-  width:28px; height:28px;
-  display:flex; align-items:center; justify-content:center;
-  border:2px solid currentColor;
+  width:28px;
+  height:28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border:1px solid var(--line);
   flex-shrink:0;
 }
 
-.choiceText{ flex:1; font-size: 14px; line-height: 1.4; }
+.choiceText{ flex:1; font-size:14px; line-height: 1.4; }
 .chev{ opacity:.5; flex-shrink:0; }
 
 .timer{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:12px 16px;
-  background:#1a1a1a;
-  border:2px solid #333;
-  margin-bottom:16px;
+  padding:10px 12px;
+  background: var(--panel);
+  border:1px solid var(--line);
+  margin-bottom:14px;
   font-size:12px;
-  color:#ccc;
+  color:var(--muted);
+  font-family: var(--mono);
 }
-.timer.expired{ border-color:#f5f5f5; background:#f5f5f5; color:#0a0a0a; }
-.timer strong{ color:#f5f5f5; font-weight:700; }
-.timer.expired strong{ color:#0a0a0a; }
+
+.timer.expired{
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.timer strong{ color:var(--ink); font-weight:800; }
+.timer.expired strong{ color:var(--bg); }
 
 .ahaIcon{
-  margin:0 auto 20px;
-  width:64px; height:64px;
-  border:2px solid #f5f5f5;
+  margin:0 auto 14px;
+  width:54px; height:54px;
+  border:1px solid var(--line);
   display:flex; align-items:center; justify-content:center;
-  animation: pulse 2s infinite;
-}
-@keyframes pulse{
-  0%, 100%{ transform:scale(1); opacity:1; }
-  50%{ transform:scale(1.05); opacity:.8; }
 }
 
 .ahaTitle{
-  font-family: 'Syne', sans-serif;
-  font-size:28px;
+  font-size:20px;
   font-weight:800;
-  margin-bottom:16px;
-  color:#f5f5f5;
+  margin-bottom:10px;
 }
+
 .ahaText{
-  font-size:15px;
+  font-size:14px;
   line-height:1.6;
-  color:#ccc;
-  margin-bottom:24px;
-  max-width:600px;
-  margin-left:auto;
-  margin-right:auto;
+  color:var(--muted);
+  margin-bottom:14px;
 }
 
 .ahaForce{
   display:inline-flex;
-  gap:12px;
+  gap:10px;
   align-items:center;
-  padding:12px 16px;
-  border:2px solid #f5f5f5;
-  background:#0a0a0a;
-  margin-bottom:20px;
-}
-.ahaForceName{ font-weight:700; letter-spacing:.08em; }
-
-.ahaHint{
-  font-size:14px;
-  line-height:1.5;
-  color:#999;
-  margin-bottom:16px;
-  max-width:560px;
-  margin-left:auto;
-  margin-right:auto;
+  padding:10px 12px;
+  border:1px solid var(--line);
+  background: transparent;
+  margin-bottom:12px;
 }
 
-.symptoms{ animation: slideIn .4s cubic-bezier(.4,0,.2,1); }
-@keyframes slideIn{
-  from{ opacity:0; transform:translateY(20px); }
-  to{ opacity:1; transform:translateY(0); }
-}
+.ahaForceName{ font-weight:800; letter-spacing:.12em; font-family: var(--mono); font-size:12px; }
+.ahaHint{ font-size:13px; color:var(--muted); margin-bottom: 10px; }
 
 .symptomsTitle{
-  font-family: 'Syne', sans-serif;
-  font-size:18px;
-  font-weight:600;
-  margin-bottom:16px;
-  color:#f5f5f5;
+  font-size:12px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--muted);
+  font-weight:800;
+  margin-bottom:12px;
+  font-family: var(--mono);
 }
-.symptomList{ display:flex; flex-direction:column; gap:12px; }
+
+.symptomList{ display:flex; flex-direction:column; gap:10px; }
 .symptomItem{
-  display:flex; align-items:flex-start; gap:12px;
-  font-size:14px; line-height:1.5; color:#ccc;
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  font-size:13px;
+  line-height:1.5;
+  color:var(--muted);
 }
-.symptomItem svg{ flex-shrink:0; margin-top:2px; color:#f5f5f5; }
+.symptomItem svg{ flex-shrink:0; margin-top:2px; }
 
 .resultGrid{
   display:grid;
   grid-template-columns: 1.1fr .9fr;
-  gap:20px;
+  gap:16px;
 }
-@media (max-width: 900px){
-  .resultGrid{ grid-template-columns: 1fr; }
-}
+@media (max-width: 900px){ .resultGrid{ grid-template-columns: 1fr; } }
 
-.panel{ border:2px solid #333; padding:20px; background:#0a0a0a; }
-.panel.soft{ background:#111; }
+.panel{
+  border:1px solid var(--line);
+  padding:16px;
+  background: var(--panel);
+}
+.panel.soft{ background: var(--panel2); }
 
 .panelTitle{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color:#999;
-  font-weight:700;
-  margin-bottom:12px;
-}
-.panelText{ font-size:14px; line-height:1.6; color:#ccc; }
-.panelText.strong{ font-weight:700; color:#f5f5f5; font-size:15px; }
-
-.mt{ margin-top: 20px; }
-
-.list{ padding-left: 20px; color:#ccc; line-height:1.6; font-size:14px; }
-.list li{ margin-bottom:8px; }
-
-.divider{ height:2px; background:#333; margin:20px 0; }
-
-.bars{ margin-top: 16px; display:flex; flex-direction:column; gap:14px; }
-
-.barRow{ display:flex; flex-direction:column; gap:8px; }
-
-.barLeft{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-
-.barName{
-  font-size:12px;
-  letter-spacing:.14em;
-  font-weight:700;
-  color:#f5f5f5;
+  color:var(--muted);
+  font-weight:800;
+  margin-bottom:10px;
+  font-family: var(--mono);
 }
 
-.tag{
-  font-size:9px;
+.panelText{ font-size:13px; line-height:1.65; color:var(--muted); }
+.panelText.strong{ font-weight:800; color:var(--ink); }
+
+.list{ padding-left: 18px; color:var(--muted); line-height:1.65; font-size:13px; }
+.list li{ margin-bottom:7px; }
+
+.benchmark{
+  display:flex; flex-direction:column; gap:8px;
+  padding:12px;
+  background: transparent;
+  border:1px solid var(--line);
+  margin-bottom:10px;
+}
+
+.benchRow{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  font-size:13px;
+}
+.benchRow.strong{
+  font-weight:800;
+  padding-top:8px;
+  border-top:1px solid rgba(10,10,10,.2);
+}
+.benchLabel{ color:var(--muted); }
+.benchValue{ font-weight:900; font-family: var(--mono); color:var(--ink); }
+
+.outcomes{
+  margin-top:14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+.outcome{ padding:12px; border:1px solid var(--line); background: transparent; }
+.outcomeLabel{
+  font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color:#666;
-  font-weight:700;
+  margin-bottom:8px;
+  font-weight:900;
+  font-family: var(--mono);
 }
-.tagHard{
-  color:#f5f5f5;
-  background:#0a0a0a;
-  padding:4px 8px;
-  border:2px solid #f5f5f5;
+.outcomeText{ font-size:13px; line-height:1.6; color:var(--muted); }
+
+.caseAnchor{
+  padding:14px;
+  background: transparent;
+  border:1px solid var(--line);
+  margin-bottom:14px;
 }
-.tagWarn{
-  color:#0a0a0a;
-  background:#f5f5f5;
-  padding:4px 8px;
+
+.caseTitle{
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  color:var(--muted);
+  margin-bottom:12px;
+  font-weight:900;
+  font-family: var(--mono);
 }
+.caseName{ font-size:14px; font-weight:800; margin-bottom:10px; }
+.caseRow{ display:flex; gap:10px; margin-bottom:8px; font-size:13px; line-height:1.5; }
+.caseLabel{ color:var(--muted); font-weight:900; min-width:60px; font-family: var(--mono); }
+.caseValue{ color:var(--muted); flex:1; }
+.caseValue.highlight{ color:var(--ink); font-weight:900; }
+.caseMechanic{ margin-top:10px; padding-top:10px; border-top:1px solid rgba(10,10,10,.2); font-size:13px; color:var(--muted); }
+
+.divider{ height:1px; background: rgba(10,10,10,.2); margin:14px 0; }
+
+.bars{ margin-top: 12px; display:flex; flex-direction:column; gap:12px; }
+.barLeft{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.barName{ font-size:12px; letter-spacing:.16em; font-weight:900; font-family: var(--mono); }
+.tag{ font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); font-weight:900; font-family: var(--mono); }
+.tagHard{ color:var(--bg); background: var(--ink); padding:4px 8px; }
+.tagWarn{ color:var(--ink); background: var(--soft); padding:4px 8px; }
 
 .barWrap{
   position:relative;
-  border:2px solid #f5f5f5;
-  height: 28px;
-  background:#0a0a0a;
+  border:1px solid var(--line);
+  height: 26px;
+  background: transparent;
   overflow:hidden;
 }
-.barIn{ height:100%; background:#f5f5f5; transition: width .6s cubic-bezier(.4,0,.2,1); }
-
+.barIn{ height:100%; background: var(--ink); transition: width .45s ease; }
 .barPct{
   position:absolute;
   right:10px;
   top:50%;
   transform: translateY(-50%);
   font-size:12px;
-  color:#0a0a0a;
-  font-weight:700;
+  color: var(--bg);
+  font-weight:900;
+  font-family: var(--mono);
   mix-blend-mode: difference;
 }
 
-.commitLadder{ display:flex; flex-direction:column; gap:12px; margin:20px 0; }
+.commitLadder{ display:flex; flex-direction:column; gap:10px; margin:14px 0; }
 
 .commitStep{
   display:flex;
   align-items:center;
-  gap:14px;
-  padding:16px;
-  border:2px solid #333;
-  background:#0a0a0a;
+  gap:12px;
+  padding:14px;
+  border:1px solid var(--line);
+  background: transparent;
   cursor:pointer;
-  transition: all .2s cubic-bezier(.4,0,.2,1);
   text-align:left;
-  font-family: 'Space Mono', monospace;
+  font-family: var(--sans);
 }
-.commitStep:hover{
-  transform:translateX(4px);
-  border-color:#f5f5f5;
-  background:#1a1a1a;
-}
-.commitStep.primary{
-  border-color:#f5f5f5;
-  background:#f5f5f5;
-  color:#0a0a0a;
-}
-.commitStep.primary:hover{
-  background:#0a0a0a;
-  color:#f5f5f5;
-}
+.commitStep:hover{ background: var(--panel2); }
+.commitStep.primary{ background: var(--ink); color: var(--bg); }
+.commitStep.primary:hover{ opacity:.92; }
 
 .commitIcon{
   width:40px; height:40px;
-  border:2px solid currentColor;
+  border:1px solid currentColor;
   display:flex; align-items:center; justify-content:center;
   flex-shrink:0;
 }
 .commitContent{ flex:1; }
-.commitTitle{ font-weight:700; font-size:14px; margin-bottom:4px; letter-spacing:.02em; }
-.commitSub{ font-size:11px; color:#999; }
-.commitStep.primary .commitSub{ color:#666; }
+.commitTitle{ font-weight:900; font-size:13px; margin-bottom:4px; }
+.commitSub{ font-size:11px; color: var(--muted); }
+.commitStep.primary .commitSub{ color: rgba(246,242,234,.75); }
+
+.footer{
+  margin-top: 16px;
+  padding-bottom: 10px;
+}
+.footerRail{
+  height:1px;
+  background: var(--line);
+  margin-bottom: 10px;
+}
+.footerMeta{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+}
+.footerTag{
+  font-family: var(--mono);
+  font-size:10px;
+  letter-spacing:.22em;
+  font-weight:900;
+  padding:6px 8px;
+  border:1px solid var(--line);
+  background: var(--panel);
+}
+.footerText{
+  font-size:12px;
+  color: var(--muted);
+  line-height:1.5;
+  max-width: 720px;
+}
 
 @media (max-width: 640px){
-  .wrap{ padding:20px 16px 60px; }
+  .wrap{ padding:18px 14px 14px; }
   .top{ flex-direction:column; align-items:flex-start; }
-  .hero{ padding:16px 0; }
-  .h1{ font-size:clamp(24px, 8vw, 48px); }
-  .card{ padding:16px; }
   .ctaRow{ flex-direction:column; align-items:stretch; }
-  .trust{ flex-direction:column; gap:12px; }
-  .commitStep{ padding:12px; }
+  .trust{ flex-direction:column; gap:10px; }
+  .resultGrid{ grid-template-columns: 1fr; }
 }
-` as const;
+`;
