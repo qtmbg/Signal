@@ -1,3 +1,5 @@
+'use client';
+
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
@@ -16,40 +18,15 @@ import {
 } from "lucide-react";
 
 /**
- * QTMBG — SIGNAL OS (Reframed)
- * Goals:
- * - Keep the conversion-optimized logic from your v2
- * - Fix layout harmony on all viewports (no "dead space" feeling)
- * - Remove foreign typography (no Syne/SpaceMono imports)
- * - Use brand tokens (fonts/colors/lines) so it matches qtmbg.com
- *
- * Notes:
- * - Set BRAND.fontSans / BRAND.fontMono to whatever qtmbg.com uses.
- * - If qtmbg uses a hosted font, load it at the site level (not inside this app).
+ * QTMBG — Signal OS (Vercel-safe, strict TS)
+ * Branding: Sometype Mono (head + body)
+ * Layout fixes:
+ * - True centered hero titles (start + result)
+ * - No awkward “dead space” (full-height layout + footer anchor)
+ * - SSR-safe localStorage hydration
  */
 
-// ------------------------ BRAND TOKENS ------------------------
-
-const BRAND = {
-  // Set these to match qtmbg.com exactly.
-  // If you don’t know the exact font names, keep these and later replace.
-  fontSans:
-    'ui-sans-serif, system-ui, -apple-system, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif',
-  fontMono:
-    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-
-  // QTMBG tends to work best with “paper + ink” brutalism.
-  bg: "#F6F2EA",
-  ink: "#0A0A0A",
-  muted: "#5A5A5A",
-  soft: "#E7E1D7",
-  line: "#0A0A0A",
-  panel: "#FFFFFF",
-  panel2: "#FBF8F2",
-
-  // Accents (keep subtle)
-  accent: "#0A0A0A",
-};
+// ------------------------ CONFIG ------------------------
 
 type ForceId = "essence" | "identity" | "offer" | "system" | "growth";
 type StageId = "launch" | "reposition" | "scale";
@@ -75,6 +52,7 @@ const STAGES: Array<{ id: StageId; label: string; sub: string }> = [
   { id: "scale", label: "Scaling", sub: "You need throughput, not more hustle" },
 ];
 
+// BENCHMARKS
 const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }>> = {
   essence: {
     launch: { avg: 42, top10: 73 },
@@ -116,7 +94,7 @@ type Question = {
 const QUESTIONS: Question[] = [
   {
     force: "essence",
-    text: "If I land on your brand today, can I understand the unique mechanism you bring?",
+    text: "If I land on your brand today… can I understand the unique mechanism you bring?",
     a: { v: 1, label: "No — it sounds like generic services." },
     b: { v: 3, label: "Somewhat — but it isn't named or sharp." },
     c: { v: 5, label: "Yes — it's specific, named, and repeatable." },
@@ -124,121 +102,123 @@ const QUESTIONS: Question[] = [
   {
     force: "identity",
     text: "Do you look and sound like a premium authority in your space?",
-    a: { v: 1, label: "Not yet — it feels inconsistent." },
+    a: { v: 1, label: "Not yet — it feels template or inconsistent." },
     b: { v: 3, label: "Clean — but not memorable or high-status." },
     c: { v: 5, label: "Yes — instantly premium and distinct." },
   },
   {
     force: "offer",
     text: "Is your flagship offer obvious and easy to choose?",
-    a: { v: 1, label: "No — it's confusing or too many options." },
-    b: { v: 3, label: "Kind of — but people still hesitate." },
+    a: { v: 1, label: "No — it's custom, confusing, or too many options." },
+    b: { v: 3, label: "Kind of — but people still hesitate or negotiate." },
     c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
   },
   {
     force: "system",
     text: "Is lead flow predictable and controlled (not luck-based)?",
-    a: { v: 1, label: "No — feast/famine and manual chasing." },
+    a: { v: 1, label: "No — it's feast/famine and manual chasing." },
     b: { v: 3, label: "Somewhat — referrals + occasional wins." },
     c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
   },
   {
     force: "growth",
-    text: "Do you have a single metric and a plan that scales without burnout?",
-    a: { v: 1, label: "No — I react to urgency." },
-    b: { v: 3, label: "Some — I track revenue, not signal quality." },
-    c: { v: 5, label: "Yes — north star + weekly execution loop." },
+    text: "Do you have a single metric and a plan that scales without chaos?",
+    a: { v: 1, label: "No — I react to bank balance and urgency." },
+    b: { v: 3, label: "Some — I track revenue, but not signal/quality." },
+    c: { v: 5, label: "Yes — clear north star + weekly execution loop." },
   },
 ];
 
+// MICRO-SYMPTOMS
 const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   essence: {
     launch: [
       "Calls turn into 'so what exactly do you do?' interrogations",
-      "You keep tweaking the homepage because it doesn’t feel sharp",
+      "You keep tweaking the homepage because it doesn't feel sharp",
       "You have multiple ways to explain your value depending on who asks",
     ],
     reposition: [
       "Referrals describe you differently than you describe yourself",
-      "Your best clients came from an angle you haven’t fully owned",
-      "Competitors charge more because their positioning is clearer",
+      "Your best clients came from an angle you haven't fully owned",
+      "Competitors with worse work charge more because their signal is clearer",
     ],
     scale: [
-      "Team struggles to articulate what makes you different",
-      "Sales defaults to features instead of the mechanism",
-      "Expansion feels risky because the ‘what we do’ isn’t transferable",
+      "New hires struggle to articulate what makes you different",
+      "Your team defaults to features instead of the core mechanism",
+      "Expansion feels risky because the 'what we do' isn't transferable",
     ],
   },
   identity: {
     launch: [
-      "You hesitate to share your website with premium prospects",
-      "Visuals feel ‘good enough’ but not investment-grade",
-      "People like your work but don’t perceive premium yet",
+      "You're hesitant to share your website with certain prospects",
+      "Your visuals feel 'good enough' but not investment-grade",
+      "People compliment your work but don't see you as premium yet",
     ],
     reposition: [
-      "Brand looks smaller than the level you operate at",
-      "Prospects negotiate because you don’t look expensive",
-      "You outgrew your identity but didn’t refresh it",
+      "Your brand looks startup-y even though you're past that stage",
+      "Prospects negotiate price because you don't look expensive",
+      "You've outgrown your identity but haven't refreshed it",
     ],
     scale: [
-      "Brand doesn’t match the size of deals you want",
-      "Enterprise hesitates due to perceived mismatch",
-      "Partnerships soften because perceived credibility isn’t clear",
+      "Your brand doesn't match the size of deals you're closing",
+      "Enterprise prospects hesitate because you don't look enterprise",
+      "Partnerships fall through due to perceived brand mismatch",
     ],
   },
   offer: {
     launch: [
-      "People like you but say ‘let me think’ then vanish",
-      "Custom proposals for every deal",
-      "Pricing becomes negotiation almost every time",
+      "People like you but say 'let me think about it' and ghost",
+      "You're doing custom proposals for every single deal",
+      "Pricing conversations turn into negotiations every time",
     ],
     reposition: [
-      "Too many offers create decision paralysis",
-      "Your best clients bought something you don’t want to sell now",
-      "Revenue exists but you’re unsure what to scale",
+      "You have too many offers and people get decision paralysis",
+      "Your best clients bought something you no longer want to sell",
+      "Revenue is good but you're not sure which offer to double down on",
     ],
     scale: [
-      "Offer architecture is too complex for the team to sell cleanly",
-      "Upsell/cross-sell happens by accident",
-      "The path isn’t obvious so money leaks",
+      "Your offer architecture is complex and hard to explain to your team",
+      "Cross-sell/upsell happens by accident, not by design",
+      "You're leaving money on the table because the path isn't obvious",
     ],
   },
   system: {
     launch: [
-      "You’re busy but revenue isn’t predictable",
-      "Leads come from hustle + luck, not a system",
-      "Follow-ups slip because everything is manual",
+      "You're always busy but revenue isn't predictable",
+      "Leads come from hustle and luck, not a repeatable system",
+      "You forget to follow up because everything is manual chaos",
     ],
     reposition: [
-      "You get attention but conversion is low",
-      "Leads leak between awareness and purchase",
-      "CRM is messy or missing",
+      "You get attention but conversion rates are embarrassingly low",
+      "Leads leak out between awareness and purchase",
+      "Your CRM is a mess (or you don't have one)",
     ],
     scale: [
-      "System lives in your head, not in assets",
-      "Lead quality is inconsistent",
-      "Close rate drops as volume increases",
+      "Your team can't scale the system because it lives in your head",
+      "Lead quality is inconsistent—some gems, mostly tire-kickers",
+      "Pipeline is full but close rate is dropping as you grow",
     ],
   },
   growth: {
     launch: [
-      "You react to cash instead of leading indicators",
-      "Each month feels like starting over",
-      "Shiny tactics because the plan isn’t clear",
+      "You react to bank balance instead of leading indicators",
+      "Every month feels like starting from zero",
+      "You chase shiny tactics because there's no clear plan",
     ],
     reposition: [
-      "You move, but direction changes week to week",
-      "Growth comes in spurts, not consistency",
-      "You track revenue, not predictive signals",
+      "You're making moves but direction keeps changing week to week",
+      "Growth happens in spurts, not consistently",
+      "You track revenue but not the signals that predict it",
     ],
     scale: [
-      "Scaling feels chaotic and draining",
-      "More budget/people doesn’t reliably increase output",
-      "You can’t name the single bottleneck slowing everything down",
+      "You're scaling but it feels chaotic and exhausting",
+      "Adding people/budget doesn't reliably increase output",
+      "You can't identify the one bottleneck slowing everything down",
     ],
   },
 };
 
+// CASE ANCHORS
 const CASE_ANCHORS: Record<
   ForceId,
   {
@@ -252,40 +232,41 @@ const CASE_ANCHORS: Record<
   essence: {
     name: "Client A",
     role: "Agency founder",
-    before: "‘We do branding and strategy’ + long calls to explain value",
+    before: "'We do branding and strategy' + long calls to explain value",
     after: "Named mechanism + shorter cycles + higher close rate",
     mechanic: "Extract the IP hidden in delivery, name it, make it the offer.",
   },
   identity: {
     name: "Client B",
     role: "B2B consultant",
-    before: "Template presence, constant negotiation",
-    after: "Upgraded touchpoints, premium perception rises",
-    mechanic: "Match identity to expertise level, not comfort zone.",
+    before: "Clean work, but looked generic → constant negotiation",
+    after: "Authority identity → 'clearly premium' perception",
+    mechanic: "Upgrade touchpoints to match expertise level, not comfort zone.",
   },
   offer: {
     name: "Client C",
-    role: "Service business",
-    before: "Too many offers, slow decisions",
-    after: "One flagship path, faster decisions",
-    mechanic: "Collapse into one obvious next step with constraints.",
+    role: "Coaching business",
+    before: "Too many offers → decision paralysis",
+    after: "One obvious flagship path → faster buying",
+    mechanic: "Collapse options into one next step with constraints.",
   },
   system: {
     name: "Client D",
-    role: "Founder",
-    before: "Feast/famine, manual follow-up",
-    after: "Repeatable nurture + predictable pipeline",
-    mechanic: "Build a simple path: viewer → lead → call → close → onboard.",
+    role: "Service founder",
+    before: "Feast/famine, manual follow-up, unclear path",
+    after: "Repeatable pipeline + nurture loop",
+    mechanic: "Build a simple happy path with one filter at each stage.",
   },
   growth: {
     name: "Client E",
-    role: "Operator",
-    before: "Reactive growth, constant switching",
-    after: "One metric + one channel focus",
-    mechanic: "Pick the lever that matters, ignore the rest for 90 days.",
+    role: "Founder",
+    before: "New tactics every week → reactive growth",
+    after: "One metric + weekly loop → predictable momentum",
+    mechanic: "Pick one lever for 90 days, ignore noise.",
   },
 };
 
+// LEAK INTELLIGENCE
 type LeakInfo = {
   leakName: string;
   humanSymptom: string;
@@ -302,13 +283,13 @@ const LEAKS: Record<ForceId, LeakInfo> = {
     leakName: "BLURRY MECHANISM",
     humanSymptom: 'People say: "Interesting… but what exactly do you do?"',
     whatItMeans:
-      "Your value may be strong, but the signal is noisy. If the mechanism isn’t named and repeatable, trust stays slow and price stays fragile.",
+      "Your value may be strong, but the signal is noisy. If the mechanism isn't named and repeatable, trust stays slow and price stays fragile.",
     todayMove:
       'Write ONE sentence and place it on your hero + bio: "I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME]."',
     weekPlan: [
       "Name the mechanism (2–4 words). If you can’t name it, you don’t own it yet.",
-      "Rewrite hero: Outcome + Mechanism + Proof + One CTA.",
-      "Publish one belief you own (a clear ‘this, not that’).",
+      "Rewrite the hero: Outcome + Mechanism + Proof + One CTA.",
+      "Publish one belief you own (a clear 'this, not that').",
     ],
     ifYouDont:
       "You keep explaining instead of attracting. Calls feel like interviews. Revenue stays tied to hustle.",
@@ -319,83 +300,81 @@ const LEAKS: Record<ForceId, LeakInfo> = {
   },
   identity: {
     leakName: "STATUS GAP",
-    humanSymptom: "You’re good, but you don’t look expensive yet.",
+    humanSymptom: "You're good, but you don't look expensive yet.",
     whatItMeans:
-      "Identity isn’t matching your expertise. That mismatch creates negotiation, doubt, and slower decisions.",
+      "Your visual + verbal identity isn’t matching the level you want to charge. That creates doubt and negotiation.",
     todayMove:
-      "Replace safe language with proof: constraints, outcomes, and one bold line you truly stand behind.",
+      "Remove safe language. Replace with proof: outcomes, constraints, numbers, and one bold claim you can defend.",
     weekPlan: [
-      "Pick one signature visual rule and apply it everywhere.",
-      "Write one model post: your contrarian framework.",
-      "Upgrade top assets: homepage, offer page, one case study.",
+      "Kill generic visuals (introduce one signature element across touchpoints).",
+      "Publish one authority post (your contrarian model).",
+      "Upgrade the top 3 assets: homepage, offer page, one case study.",
     ],
     ifYouDont:
-      "You keep justifying price and getting compared to cheaper options.",
+      "You keep justifying price. Prospects shop you against cheaper options. Resentment builds.",
     ifYouDo:
-      "Price objections soften. Premium clients self-select. Referrals come better-qualified.",
+      "Price objections drop. Prospects interpret premium as obvious. Better leads arrive.",
     auditReason:
-      "The Audit identifies credibility gaps and installs a clear proof hierarchy across your touchpoints.",
+      "The Audit identifies credibility gaps and gives you a proof stack + messaging hierarchy.",
   },
   offer: {
     leakName: "VALUE CONFUSION",
-    humanSymptom: "People like you… but decisions are slow.",
+    humanSymptom: "People like you… but don't buy fast.",
     whatItMeans:
-      "No single obvious flagship path. Too many options or too much custom creates paralysis.",
+      "No single obvious flagship path. Too many options or too much custom creates hesitation.",
     todayMove:
-      'Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
+      'Choose one flagship. Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
     weekPlan: [
-      "Collapse into 1 flagship + 1 entry/ascension step.",
-      "Rewrite pricing page: one path, one CTA.",
-      "Publish one teardown that shows the after-state your offer creates.",
+      "Collapse offers → 1 flagship + 1 entry or ascension step.",
+      "Rewrite pricing page (one path, one CTA).",
+      "Publish one teardown: show how your offer creates the after-state.",
     ],
     ifYouDont:
-      "You keep building proposals and hearing ‘let me think’. Close rate stays fragile.",
+      "More proposals. More 'let me think.' Close rate stays fragile.",
     ifYouDo:
-      "Decision time drops. Conversion improves. Scarcity becomes real because the path is clear.",
+      "Decision time drops from weeks to days. Scarcity becomes real. Demand tightens.",
     auditReason:
       "The Audit aligns offer architecture, pricing logic, and conversion flow so buyers stop hesitating.",
   },
   system: {
     leakName: "PIPELINE FRICTION",
-    humanSymptom: "You’re busy… but cash isn’t predictable.",
+    humanSymptom: "You're busy… but revenue isn't predictable.",
     whatItMeans:
-      "The path from attention → cash leaks. You might have demand, but not control.",
+      "Your path from attention → cash leaks. You might have demand signals, but not a controlled system.",
     todayMove:
       "Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.",
     weekPlan: [
       "Install one lead capture + one follow-up email.",
       "Add one booking filter question to repel bad fits.",
-      "Create one weekly nurture loop: proof + CTA.",
+      "Create one nurture loop (weekly proof + CTA).",
     ],
     ifYouDont:
-      "Revenue remains random. Scaling becomes ‘work more’, not ‘system better’.",
+      "Growth stays random. You work harder for unstable cash. Scaling becomes heavier.",
     ifYouDo:
-      "You can forecast. You know what inputs create cash. You scale without chaos.",
+      "You can forecast. You know inputs → outputs. You regain control.",
     auditReason:
-      "The Audit maps the exact leak: where prospects drop, why, and what to change first.",
+      "The Audit maps the exact funnel leak: where prospects drop, why, and what to change first.",
   },
   growth: {
     leakName: "NO NORTH STAR",
-    humanSymptom: "You’re moving… but direction keeps shifting.",
+    humanSymptom: "You’re moving… but direction keeps changing.",
     whatItMeans:
-      "No clean metric + rhythm. Growth becomes reactive and exhausting.",
+      "No clean metric + rhythm. Growth becomes reactive, emotional, and exhausting.",
     todayMove:
-      "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV) and track it weekly.",
+      "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV). Track weekly on the same day.",
     weekPlan: [
       "Choose one channel to dominate for 30 days.",
-      "Add one referral trigger at the moment of ‘first win’.",
-      "Weekly review: metric → bottleneck → one fix → repeat.",
+      "Build one referral trigger (ask at the moment of first win).",
+      "Create a weekly review: metric → bottleneck → one fix → repeat.",
     ],
     ifYouDont:
-      "You keep chasing tactics and feeling behind. Momentum stays inconsistent.",
+      "More tactics, less momentum. Breakthrough stays out of reach.",
     ifYouDo:
-      "Decisions become obvious. You build compounding momentum instead of frantic output.",
+      "Decisions become obvious. You build momentum without chaos.",
     auditReason:
       "The Audit identifies what to optimize first so you scale without chaos: signal, offer, or system.",
   },
 };
-
-// ------------------------ UTIL ------------------------
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
@@ -412,6 +391,8 @@ function sortForcesByWeakest(scores: Record<ForceId, number>) {
   return pairs.sort((a, b) => a[1] - b[1]);
 }
 
+// ------------------------ UI ------------------------
+
 type View = "start" | "scan" | "aha" | "result" | "email";
 
 type State = {
@@ -424,7 +405,6 @@ type State = {
   email: string;
   name: string;
   website: string;
-  emailSent: boolean;
 };
 
 const DEFAULT_STATE: State = {
@@ -437,12 +417,12 @@ const DEFAULT_STATE: State = {
   email: "",
   name: "",
   website: "",
-  emailSent: false,
 };
 
-function loadState(): State | null {
+function loadStateSafe(): State | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    if (typeof window === "undefined") return null;
+    const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as State;
   } catch {
@@ -450,9 +430,10 @@ function loadState(): State | null {
   }
 }
 
-function saveState(s: State) {
+function saveStateSafe(s: State) {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
     // ignore
   }
@@ -464,37 +445,42 @@ function bandLabel(pct: number) {
   return "CRITICAL";
 }
 
+// ------------------------ TIMER LOGIC ------------------------
+
 function useDecayTimer(createdAt: string) {
   const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
-    const i = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(i);
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
   }, []);
+
   const created = new Date(createdAt).getTime();
-  const expires = created + 48 * 60 * 60 * 1000;
+  const expires = created + 48 * 60 * 60 * 1000; // 48 hours
   const remaining = Math.max(0, expires - now);
+
   const hours = Math.floor(remaining / (60 * 60 * 1000));
   const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
   const secs = Math.floor((remaining % (60 * 1000)) / 1000);
+
   return { hours, mins, secs, expired: remaining === 0 };
 }
 
-// ------------------------ UI ------------------------
+// ------------------------ COMPONENTS ------------------------
 
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="qbg">
       <style>{CSS}</style>
+
       <div className="wrap">
-        <div className="content">{children}</div>
+        <div className="main">{children}</div>
+
         <div className="footer">
-          <div className="footerRail" />
-          <div className="footerMeta">
-            <span className="footerTag">QTMBG</span>
-            <span className="footerText">
-              Signal OS is a scan, not a full audit. Use it to convert insight into action.
-            </span>
-          </div>
+          <span className="footerTag">QTMBG</span>
+          <span className="muted">
+            Signal OS is a scan, not a full audit. Use it to convert insight into action.
+          </span>
         </div>
       </div>
     </div>
@@ -505,8 +491,8 @@ function HeaderMini() {
   return (
     <div className="top">
       <div className="brand">
-        <span className="pill">QUANTUM BRANDING</span>
-        <span className="muted">Signal OS</span>
+        <span className="brandBox">QUANTUM BRANDING</span>
+        <span className="brandName">Signal OS</span>
       </div>
       <div className="muted tiny">90 sec • 5 forces • primary leak</div>
     </div>
@@ -538,7 +524,7 @@ function Btn({
       disabled={disabled}
     >
       {icon}
-      <span className="btnText">{children}</span>
+      {children}
       <ArrowRight size={16} />
     </button>
   );
@@ -581,14 +567,16 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
 
 function DecayTimer({ createdAt }: { createdAt: string }) {
   const { hours, mins, secs, expired } = useDecayTimer(createdAt);
+
   if (expired) {
     return (
       <div className="timer expired">
         <Clock size={14} />
-        <span>Insights expired — retake scan for a fresh read</span>
+        <span>Analysis expired — retake scan for fresh insights</span>
       </div>
     );
   }
+
   return (
     <div className="timer">
       <Clock size={14} />
@@ -605,13 +593,23 @@ function DecayTimer({ createdAt }: { createdAt: string }) {
 
 // ------------------------ MAIN ------------------------
 
-export default function App() {
-  const hydrated = useMemo(() => loadState(), []);
-  const [state, setState] = useState<State>(() => hydrated || DEFAULT_STATE);
+export default function Page() {
+  const [state, setState] = useState<State>(DEFAULT_STATE);
+
+  // SSR-safe hydration (loads persisted state on client)
+  useEffect(() => {
+    const loaded = loadStateSafe();
+    if (loaded) setState(loaded);
+  }, []);
 
   useEffect(() => {
-    saveState(state);
+    saveStateSafe(state);
   }, [state]);
+
+  // scroll to top on view changes (keeps UX tight)
+  useEffect(() => {
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [state.view]);
 
   const total = QUESTIONS.length;
 
@@ -645,7 +643,6 @@ export default function App() {
       answers: {},
       ahaShown: false,
       createdAtISO: new Date().toISOString(),
-      emailSent: false,
     }));
   };
 
@@ -659,30 +656,42 @@ export default function App() {
       }
 
       if (nextIdx >= total) {
-        return { ...prev, answers: nextAnswers, idx: prev.idx, view: "result" };
+        return {
+          ...prev,
+          answers: nextAnswers,
+          idx: total - 1,
+          view: "result",
+        };
       }
 
       return { ...prev, answers: nextAnswers, idx: nextIdx };
     });
   };
 
-  const continueFromAha = () => setState((p) => ({ ...p, view: "scan", ahaShown: true }));
+  const continueFromAha = () => {
+    setState((prev) => ({ ...prev, view: "scan", ahaShown: true }));
+  };
 
-  const goBack = () => setState((p) => ({ ...p, idx: Math.max(0, p.idx - 1) }));
+  const goBack = () => {
+    setState((prev) => ({ ...prev, idx: Math.max(0, prev.idx - 1) }));
+  };
 
   const restart = () => {
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+      if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // ignore
+    }
     setState({ ...DEFAULT_STATE, createdAtISO: new Date().toISOString() });
   };
 
-  const toEmail = () => setState((p) => ({ ...p, view: "email" }));
+  const toEmail = () => setState((prev) => ({ ...prev, view: "email" }));
 
   const submitEmail = () => {
-    // Replace with real API call later.
-    setState((p) => ({ ...p, emailSent: true }));
-    setTimeout(() => {
-      setState((p) => ({ ...p, view: "result" }));
-    }, 700);
+    // hook to your backend later
+    console.log("Email capture:", { email: state.email, name: state.name, website: state.website });
+    alert(`Thanks ${state.name || "there"}! You'll get the breakdown by email.`);
+    setState((prev) => ({ ...prev, view: "result" }));
   };
 
   const toAudit = () => {
@@ -696,7 +705,10 @@ export default function App() {
       ...(state.email && { email: state.email }),
       ...(state.website && { website: state.website }),
     });
-    window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
+
+    if (typeof window !== "undefined") {
+      window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
+    }
   };
 
   // ------------------------ VIEWS ------------------------
@@ -707,9 +719,9 @@ export default function App() {
         <HeaderMini />
 
         <div className="hero">
-          <div className="kicker">Signal Scan</div>
-          <div className="h1">Find the one thing weakening your brand right now.</div>
-          <div className="sub">
+          <div className="kicker center">SIGNAL SCAN</div>
+          <div className="h1 center">Find the one thing weakening your brand right now.</div>
+          <div className="sub center">
             90 seconds. 5 questions. You get your primary leak and the next move.
             <br />
             <b>No email required to see results.</b>
@@ -745,7 +757,7 @@ export default function App() {
   }
 
   if (state.view === "aha") {
-    const sortedSoFar = sortForcesByWeakest({ ...scores });
+    const sortedSoFar = sortForcesByWeakest(scores);
     const emerging = sortedSoFar[0]?.[0] ?? "essence";
     const emergingMeta = FORCES.find((f) => f.id === emerging)!;
     const EmergingIcon = emergingMeta.icon;
@@ -756,16 +768,18 @@ export default function App() {
 
         <Card className="aha">
           <div className="ahaIcon">
-            <Target size={22} />
+            <Target size={32} />
           </div>
 
           <div className="ahaTitle">Pattern detected.</div>
+
           <div className="ahaText">
-            Based on your first answers, your signal likely leaks in <strong>{emergingMeta.label}</strong>.
+            Based on your first answers, I’m seeing a potential leak in your{" "}
+            <strong>{emergingMeta.label}</strong>.
           </div>
 
           <div className="ahaForce">
-            <EmergingIcon size={18} />
+            <EmergingIcon size={20} />
             <div>
               <div className="ahaForceName">{emergingMeta.label}</div>
               <div className="tiny muted">{emergingMeta.micro}</div>
@@ -773,24 +787,31 @@ export default function App() {
           </div>
 
           <div className="ahaHint">
-            {emerging === "essence" && "Usually: mechanism isn’t named or sharp enough to create instant trust."}
-            {emerging === "identity" && "Usually: identity doesn’t match the level you want to charge."}
-            {emerging === "offer" && "Usually: no obvious flagship path, too much choice."}
-            {emerging === "system" && "Usually: lead flow is not controlled, too much luck."}
-            {emerging === "growth" && "Usually: no metric rhythm, decisions stay reactive."}
+            {emerging === "essence" &&
+              "This usually means your mechanism isn’t named or sharp enough to create instant trust."}
+            {emerging === "identity" &&
+              "This usually means your identity isn’t matching the level you want to charge."}
+            {emerging === "offer" &&
+              "This usually means you don’t have one obvious flagship path — too many options create paralysis."}
+            {emerging === "system" &&
+              "This usually means lead flow is unpredictable — more feast/famine than controlled pipeline."}
+            {emerging === "growth" &&
+              "This usually means you’re reacting to urgency instead of tracking the right metric."}
           </div>
+
+          <div className="ahaQuestion">Sound familiar?</div>
 
           <div className="ctaRow">
             <Btn variant="primary" onClick={continueFromAha}>
-              Confirm it
+              Yes — confirm it
             </Btn>
             <Btn variant="secondary" onClick={continueFromAha}>
-              Keep going
+              Not sure — keep going
             </Btn>
           </div>
 
           <div className="tiny muted">
-            The next questions confirm or refine the diagnosis.
+            This is pattern recognition. The next questions confirm or refine the diagnosis.
           </div>
         </Card>
       </AppShell>
@@ -812,7 +833,7 @@ export default function App() {
               Question {state.idx + 1} / {total}
             </div>
             <div className="forceLine">
-              <Icon size={16} />
+              <Icon size={18} />
               <div>
                 <div className="forceName">{forceMeta.label}</div>
                 <div className="tiny muted">{forceMeta.micro}</div>
@@ -867,10 +888,10 @@ export default function App() {
         <HeaderMini />
 
         <div className="hero">
-          <div className="kicker">Optional</div>
-          <div className="h1">Email the full breakdown</div>
-          <div className="sub">
-            Get the complete leak analysis + benchmarks + a short walkthrough video.
+          <div className="kicker center">EXPORT</div>
+          <div className="h1 center">Email the breakdown + keep it.</div>
+          <div className="sub center">
+            I’ll send your leak analysis, benchmarks, and a clean next-step plan.
           </div>
         </div>
 
@@ -919,19 +940,18 @@ export default function App() {
             <Btn
               variant="primary"
               onClick={submitEmail}
-              disabled={!state.email || state.emailSent}
+              disabled={!state.email}
               icon={<Send size={16} />}
             >
-              {state.emailSent ? "Sent" : "Send it"}
+              Email me the breakdown
             </Btn>
-
             <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: "result" }))}>
               Skip
             </button>
           </div>
 
           <div className="tiny muted">
-            No spam. Only the breakdown. Unsubscribe anytime.
+            No spam. One useful email with your analysis.
           </div>
         </Card>
       </AppShell>
@@ -953,12 +973,13 @@ export default function App() {
   return (
     <AppShell>
       <HeaderMini />
+
       <DecayTimer createdAt={state.createdAtISO} />
 
       <div className="hero">
-        <div className="kicker">Your Primary Leak</div>
-        <div className="leakBox">{primaryInfo.leakName}</div>
-        <div className="sub">{primaryInfo.humanSymptom}</div>
+        <div className="kicker center">YOUR PRIMARY LEAK</div>
+        <div className="h1 leak center">{primaryInfo.leakName}</div>
+        <div className="sub center">{primaryInfo.humanSymptom}</div>
       </div>
 
       <Card className="symptoms">
@@ -1022,7 +1043,7 @@ export default function App() {
 
             <div className="panelTitle mt">Important</div>
             <div className="panelText small">
-              This is a signal scan. Not a full audit. It tells you where you leak. The Audit is where we build decisions + assets.
+              This is a signal scan, not a full audit. It tells you where you leak. The Audit is where we build decisions + assets you can execute.
             </div>
           </div>
 
@@ -1053,11 +1074,14 @@ export default function App() {
                 const isPrimary = f === primary;
                 const isSecondary = f === secondary;
                 const tag = isPrimary ? "PRIMARY LEAK" : isSecondary ? "SECONDARY" : bandLabel(pct);
+
                 return (
                   <div key={f} className="barRow">
                     <div className="barLeft">
                       <div className="barName">{meta.label}</div>
-                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>{tag}</div>
+                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>
+                        {tag}
+                      </div>
                     </div>
                     <div className="barWrap">
                       <div className="barIn" style={{ width: `${pct}%` }} />
@@ -1077,7 +1101,7 @@ export default function App() {
                   <Send size={18} />
                 </div>
                 <div className="commitContent">
-                  <div className="commitTitle">Email me the breakdown</div>
+                  <div className="commitTitle">Email me the deeper breakdown</div>
                   <div className="commitSub">Free • Save this analysis</div>
                 </div>
                 <ChevronRight size={18} />
@@ -1123,192 +1147,204 @@ export default function App() {
 // ------------------------ CSS ------------------------
 
 const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Sometype+Mono:wght@400;500;600;700&display=swap');
+
 :root{
-  --bg:${BRAND.bg};
-  --ink:${BRAND.ink};
-  --muted:${BRAND.muted};
-  --soft:${BRAND.soft};
-  --line:${BRAND.line};
-  --panel:${BRAND.panel};
-  --panel2:${BRAND.panel2};
-  --sans:${BRAND.fontSans};
-  --mono:${BRAND.fontMono};
+  --bg: #f6f1e8;
+  --paper: #ffffff;
+  --ink: #0a0a0a;
+  --muted: #6f6f6f;
+  --rule: rgba(10,10,10,.55);
+  --rule2: rgba(10,10,10,.18);
 }
 
 *{margin:0;padding:0;box-sizing:border-box;}
 
 .qbg{
   min-height:100vh;
-  color:var(--ink);
   background: var(--bg);
-  font-family: var(--sans);
-  line-height:1.5;
-
-  /* subtle specimen grid so “empty space” feels designed */
+  color: var(--ink);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
+  line-height:1.55;
+  display:flex;
+  /* subtle QTMBG grid */
   background-image:
-    linear-gradient(to right, rgba(10,10,10,0.05) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(10,10,10,0.05) 1px, transparent 1px);
-  background-size: 56px 56px;
+    linear-gradient(to right, var(--rule2) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule2) 1px, transparent 1px);
+  background-size: 48px 48px;
 }
 
 .wrap{
-  max-width: 1120px;
+  width:100%;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 28px 18px 18px;
-
-  /* full-height layout: eliminates “dead space” feeling */
-  min-height: 100vh;
+  padding: 26px 20px 22px;
   display:flex;
   flex-direction:column;
-}
-
-.content{
   flex:1;
 }
+
+.main{ flex:1; }
 
 .top{
   display:flex;
   align-items:flex-end;
   justify-content:space-between;
   gap:16px;
-  padding-bottom: 14px;
-  border-bottom:1px solid var(--line);
-  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom:2px solid var(--ink);
+  margin-bottom: 22px;
 }
 
-.brand{ display:flex; align-items:center; gap:12px; }
-.pill{
-  border:1px solid var(--line);
-  padding:7px 10px;
+.brand{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.brandBox{
+  border:2px solid var(--ink);
+  padding:8px 12px;
   font-size:10px;
   letter-spacing:.22em;
   text-transform:uppercase;
   font-weight:700;
-  background:var(--ink);
-  color:var(--bg);
-  font-family: var(--mono);
+  background: var(--ink);
+  color: var(--bg);
 }
 
-.muted{ color:var(--muted); }
-.tiny{ font-size:11px; line-height:1.4; }
-.small{ font-size:13px; line-height:1.5; }
-.mt{ margin-top: 16px; }
+.brandName{
+  font-size:16px;
+  letter-spacing:.02em;
+  font-weight:500;
+}
 
-.hero{ padding: 18px 0; max-width: 920px; }
+.muted{ color: var(--muted); }
+.tiny{ font-size:12px; line-height:1.4; }
+.small{ font-size:13px; line-height:1.55; }
+
+.hero{
+  padding: 18px 0 16px;
+  max-width: 980px;
+  margin: 0 auto;
+  text-align:center;
+}
+
+.center{ text-align:center; }
 
 .kicker{
   font-size:11px;
   letter-spacing:.24em;
   text-transform:uppercase;
-  color:var(--muted);
-  margin-bottom:10px;
+  color: var(--muted);
+  margin-bottom:12px;
   font-weight:700;
-  font-family: var(--mono);
 }
 
 .h1{
-  font-size: clamp(26px, 3.6vw, 44px);
-  line-height: 1.1;
+  font-size: clamp(32px, 5vw, 64px);
+  line-height: 1.04;
   letter-spacing: -0.02em;
   font-weight: 700;
 }
 
-.sub{
-  margin-top:12px;
-  font-size:15px;
-  line-height:1.65;
-  color:var(--muted);
-  max-width: 760px;
-}
-
-.sub b{ color:var(--ink); font-weight:700; }
-
-.leakBox{
+.h1.leak{
+  border:2px solid var(--ink);
   display:inline-block;
+  padding:14px 18px;
   margin-top:6px;
-  border:1px solid var(--line);
   background: var(--ink);
   color: var(--bg);
-  padding: 10px 14px;
-  font-family: var(--mono);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  font-weight: 800;
 }
+
+.sub{
+  margin-top:14px;
+  font-size:15px;
+  line-height:1.65;
+  color: rgba(10,10,10,.78);
+  max-width: 760px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.sub b{ color: var(--ink); font-weight:700; }
 
 .card{
-  border:1px solid var(--line);
-  padding: 18px;
-  background: var(--panel);
-  margin-bottom:14px;
+  border:2px solid var(--ink);
+  padding: 22px;
+  background: var(--paper);
+  margin-bottom:16px;
 }
 
-.card.aha{ background: var(--panel2); }
+.card.aha{
+  background: var(--paper);
+}
 
 .card.symptoms{
-  background: var(--panel2);
+  background: rgba(255,255,255,.8);
 }
 
 .grid2{
   display:grid;
   grid-template-columns: 1fr 1fr;
-  gap:14px;
+  gap:16px;
 }
 
 @media (max-width: 720px){
   .grid2{ grid-template-columns: 1fr; }
 }
 
-.field{ margin-bottom: 14px; }
+.field{ margin-bottom: 16px; }
 
 .label{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color:var(--muted);
+  color: var(--muted);
   margin-bottom:10px;
   font-weight:700;
-  font-family: var(--mono);
 }
 
-.req{ color:var(--ink); }
+.req{ color: var(--ink); }
 
 .input{
   width:100%;
-  border:1px solid var(--line);
-  padding:12px 10px;
+  border:none;
+  border-bottom:2px solid var(--ink);
+  padding:12px 4px;
   font-size:15px;
   outline:none;
   background:transparent;
-  color:var(--ink);
-  font-family: var(--sans);
+  color: var(--ink);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
 }
 
-.input::placeholder{ color:rgba(10,10,10,.45); }
+.input::placeholder{ color: rgba(10,10,10,.35); }
 
 .stageGrid{
   display:grid;
   grid-template-columns: 1fr;
-  gap:10px;
+  gap:12px;
 }
 
 .stage{
-  border:1px solid var(--line);
-  padding:14px;
+  border:2px solid var(--ink);
+  padding:16px;
   text-align:left;
-  background:transparent;
+  background: var(--paper);
+  transition: all .18s cubic-bezier(.4,0,.2,1);
   cursor:pointer;
-  font-family: var(--sans);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
 }
 
-.stage:hover{ background: var(--panel2); }
+.stage:hover{ transform: translateY(-2px); }
 
 .stage.active{
   background: var(--ink);
   color: var(--bg);
 }
 
-.stage.active .muted{ color: rgba(246,242,234,.75); }
+.stage.active .muted{ color: rgba(246,241,232,.75); }
 
 .stageTitle{
   font-weight:700;
@@ -1317,66 +1353,62 @@ const CSS = `
 }
 
 .btn{
-  border:1px solid var(--line);
-  padding:12px 14px;
+  border:2px solid var(--ink);
+  padding:14px 18px;
   display:inline-flex;
   align-items:center;
-  gap:10px;
+  gap:12px;
+  text-transform:uppercase;
   letter-spacing:.18em;
   font-size:11px;
   cursor:pointer;
-  font-family: var(--mono);
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
   font-weight:700;
-  text-transform: uppercase;
 }
-
-.btnText{ letter-spacing:.16em; }
 
 .btn.primary{
-  background:var(--ink);
-  color:var(--bg);
+  background: var(--ink);
+  color: var(--bg);
 }
 
-.btn.primary:hover{ opacity:.92; }
+.btn.primary:hover{ transform: translateY(-2px); }
 
 .btn.secondary{
-  background:transparent;
-  color:var(--ink);
+  background: var(--paper);
+  color: var(--ink);
 }
 
-.btn.secondary:hover{ background: var(--panel2); }
+.btn.secondary:hover{ transform: translateY(-2px); }
 
-.btn.disabled{
-  opacity:.35;
-  cursor:not-allowed;
-}
+.btn.disabled{ opacity:.35; cursor:not-allowed; }
 
 .link{
   background:transparent;
   border:none;
   padding:0;
-  color:var(--muted);
+  color: var(--muted);
   text-decoration: underline;
   cursor:pointer;
-  font-family: var(--mono);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
   font-size:12px;
 }
 
-.link:hover{ color:var(--ink); }
+.link:hover{ color: var(--ink); }
 
 .ctaRow{
   display:flex;
   align-items:center;
   justify-content:space-between;
-  gap:14px;
-  margin-top: 6px;
+  gap:16px;
+  margin-top: 8px;
   flex-wrap:wrap;
 }
 
 .trust{
   display:flex;
   gap:18px;
-  margin-top:16px;
+  margin-top:18px;
   flex-wrap:wrap;
 }
 
@@ -1385,8 +1417,7 @@ const CSS = `
   align-items:center;
   gap:8px;
   font-size:12px;
-  color:var(--muted);
-  font-family: var(--mono);
+  color: rgba(10,10,10,.75);
 }
 
 .scanHead{
@@ -1397,37 +1428,46 @@ const CSS = `
   margin-bottom: 12px;
 }
 
-.forceLine{ display:flex; gap:10px; align-items:flex-start; }
+.forceLine{
+  display:flex;
+  gap:12px;
+  align-items:flex-start;
+}
+
 .forceName{
-  font-weight:800;
-  letter-spacing:.12em;
-  font-size:12px;
-  font-family: var(--mono);
+  font-weight:700;
+  letter-spacing:.14em;
+  font-size:14px;
 }
 
 .progress{
   width:100%;
-  height:2px;
-  background: rgba(10,10,10,.12);
-  margin-bottom: 16px;
+  height:3px;
+  background: rgba(10,10,10,.2);
+  margin-bottom: 18px;
   overflow:hidden;
 }
 
 .progressIn{
-  height:2px;
+  height:3px;
   background: var(--ink);
-  transition: width .25s ease;
+  transition: width .25s cubic-bezier(.4,0,.2,1);
 }
 
 .qText{
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1.35;
   letter-spacing: -0.01em;
-  font-weight: 700;
-  margin-bottom: 16px;
+  font-weight: 600;
+  margin-bottom: 18px;
+  color: var(--ink);
 }
 
-.choices{ display:flex; flex-direction:column; gap:10px; }
+.choices{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
 
 .choice{
   display:flex;
@@ -1435,14 +1475,15 @@ const CSS = `
   gap:12px;
   width:100%;
   text-align:left;
-  border:1px solid var(--line);
-  background:transparent;
-  padding:14px;
+  border:2px solid var(--ink);
+  background: var(--paper);
+  padding:16px;
   cursor:pointer;
-  font-family: var(--sans);
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
 }
 
-.choice:hover{ background: var(--panel2); }
+.choice:hover{ transform: translateY(-2px); }
 
 .choiceDot{
   width:28px;
@@ -1450,24 +1491,28 @@ const CSS = `
   display:flex;
   align-items:center;
   justify-content:center;
-  border:1px solid var(--line);
+  border:2px solid currentColor;
   flex-shrink:0;
 }
 
-.choiceText{ flex:1; font-size:14px; line-height: 1.4; }
-.chev{ opacity:.5; flex-shrink:0; }
+.choiceText{
+  flex:1;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.chev{ opacity:.55; flex-shrink:0; }
 
 .timer{
   display:flex;
   align-items:center;
   gap:10px;
-  padding:10px 12px;
-  background: var(--panel);
-  border:1px solid var(--line);
+  padding:12px 14px;
+  background: rgba(255,255,255,.9);
+  border:2px solid var(--ink);
   margin-bottom:14px;
   font-size:12px;
-  color:var(--muted);
-  font-family: var(--mono);
+  color: rgba(10,10,10,.75);
 }
 
 .timer.expired{
@@ -1475,99 +1520,152 @@ const CSS = `
   color: var(--bg);
 }
 
-.timer strong{ color:var(--ink); font-weight:800; }
-.timer.expired strong{ color:var(--bg); }
+.timer strong{ color: var(--ink); font-weight:700; }
+.timer.expired strong{ color: var(--bg); }
 
 .ahaIcon{
-  margin:0 auto 14px;
-  width:54px; height:54px;
-  border:1px solid var(--line);
-  display:flex; align-items:center; justify-content:center;
+  margin:0 auto 18px;
+  width:64px;
+  height:64px;
+  border:2px solid var(--ink);
+  display:flex;
+  align-items:center;
+  justify-content:center;
 }
 
 .ahaTitle{
-  font-size:20px;
-  font-weight:800;
-  margin-bottom:10px;
+  font-size:28px;
+  font-weight:700;
+  margin-bottom:14px;
 }
 
 .ahaText{
-  font-size:14px;
-  line-height:1.6;
-  color:var(--muted);
-  margin-bottom:14px;
+  font-size:15px;
+  line-height:1.65;
+  color: rgba(10,10,10,.78);
+  margin-bottom:18px;
+  max-width:640px;
+  margin-left:auto;
+  margin-right:auto;
 }
 
 .ahaForce{
   display:inline-flex;
-  gap:10px;
+  gap:12px;
   align-items:center;
-  padding:10px 12px;
-  border:1px solid var(--line);
-  background: transparent;
-  margin-bottom:12px;
+  padding:12px 14px;
+  border:2px solid var(--ink);
+  background: var(--paper);
+  margin-bottom:16px;
 }
 
-.ahaForceName{ font-weight:800; letter-spacing:.12em; font-family: var(--mono); font-size:12px; }
-.ahaHint{ font-size:13px; color:var(--muted); margin-bottom: 10px; }
+.ahaForceName{
+  font-weight:700;
+  letter-spacing:.12em;
+}
+
+.ahaHint{
+  font-size:14px;
+  line-height:1.55;
+  color: rgba(10,10,10,.68);
+  margin-bottom:14px;
+  max-width:620px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+.ahaQuestion{
+  font-size:18px;
+  font-weight:600;
+  margin:18px 0 16px;
+}
 
 .symptomsTitle{
   font-size:12px;
-  letter-spacing:.18em;
+  letter-spacing:.2em;
   text-transform:uppercase;
-  color:var(--muted);
-  font-weight:800;
-  margin-bottom:12px;
-  font-family: var(--mono);
+  color: rgba(10,10,10,.68);
+  font-weight:700;
+  margin-bottom:14px;
 }
 
-.symptomList{ display:flex; flex-direction:column; gap:10px; }
+.symptomList{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
 .symptomItem{
   display:flex;
   align-items:flex-start;
-  gap:10px;
-  font-size:13px;
-  line-height:1.5;
-  color:var(--muted);
+  gap:12px;
+  font-size:14px;
+  line-height:1.55;
+  color: rgba(10,10,10,.78);
 }
+
 .symptomItem svg{ flex-shrink:0; margin-top:2px; }
 
 .resultGrid{
   display:grid;
   grid-template-columns: 1.1fr .9fr;
-  gap:16px;
+  gap:18px;
 }
-@media (max-width: 900px){ .resultGrid{ grid-template-columns: 1fr; } }
+
+@media (max-width: 900px){
+  .resultGrid{ grid-template-columns: 1fr; }
+}
 
 .panel{
-  border:1px solid var(--line);
-  padding:16px;
-  background: var(--panel);
+  border:2px solid var(--ink);
+  padding:18px;
+  background: var(--paper);
 }
-.panel.soft{ background: var(--panel2); }
+
+.panel.soft{
+  background: rgba(255,255,255,.85);
+}
 
 .panelTitle{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color:var(--muted);
-  font-weight:800;
+  color: rgba(10,10,10,.65);
+  font-weight:700;
   margin-bottom:10px;
-  font-family: var(--mono);
 }
 
-.panelText{ font-size:13px; line-height:1.65; color:var(--muted); }
-.panelText.strong{ font-weight:800; color:var(--ink); }
+.panelText{
+  font-size:14px;
+  line-height:1.65;
+  color: rgba(10,10,10,.78);
+}
 
-.list{ padding-left: 18px; color:var(--muted); line-height:1.65; font-size:13px; }
-.list li{ margin-bottom:7px; }
+.panelText.strong{
+  font-weight:700;
+  color: var(--ink);
+  font-size:15px;
+}
+
+.mt{ margin-top: 18px; }
+
+.list{
+  padding-left: 18px;
+  color: rgba(10,10,10,.78);
+  line-height:1.65;
+  font-size:14px;
+}
+
+.list li{ margin-bottom:8px; }
 
 .benchmark{
-  display:flex; flex-direction:column; gap:8px;
-  padding:12px;
-  background: transparent;
-  border:1px solid var(--line);
-  margin-bottom:10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding:14px;
+  background: rgba(255,255,255,.7);
+  border:2px solid rgba(10,10,10,.25);
+  margin-bottom:12px;
 }
 
 .benchRow{
@@ -1576,71 +1674,156 @@ const CSS = `
   align-items:center;
   font-size:13px;
 }
+
 .benchRow.strong{
-  font-weight:800;
+  font-weight:700;
   padding-top:8px;
   border-top:1px solid rgba(10,10,10,.2);
 }
-.benchLabel{ color:var(--muted); }
-.benchValue{ font-weight:900; font-family: var(--mono); color:var(--ink); }
+
+.benchLabel{ color: rgba(10,10,10,.62); }
+.benchValue{ font-weight:700; font-size:16px; color: var(--ink); }
 
 .outcomes{
-  margin-top:14px;
+  margin-top:18px;
   display:flex;
   flex-direction:column;
-  gap:10px;
+  gap:12px;
 }
-.outcome{ padding:12px; border:1px solid var(--line); background: transparent; }
+
+.outcome{
+  padding:14px;
+  border:2px solid rgba(10,10,10,.35);
+  background: rgba(255,255,255,.8);
+}
+
 .outcomeLabel{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
   margin-bottom:8px;
-  font-weight:900;
-  font-family: var(--mono);
+  font-weight:700;
+  color: rgba(10,10,10,.65);
 }
-.outcomeText{ font-size:13px; line-height:1.6; color:var(--muted); }
+
+.outcomeText{
+  font-size:13px;
+  line-height:1.55;
+  color: rgba(10,10,10,.78);
+}
 
 .caseAnchor{
-  padding:14px;
-  background: transparent;
-  border:1px solid var(--line);
-  margin-bottom:14px;
+  padding:16px;
+  background: rgba(255,255,255,.9);
+  border:2px solid rgba(10,10,10,.35);
+  margin-bottom:16px;
 }
 
 .caseTitle{
   font-size:11px;
   letter-spacing:.18em;
   text-transform:uppercase;
-  color:var(--muted);
+  color: rgba(10,10,10,.65);
   margin-bottom:12px;
-  font-weight:900;
-  font-family: var(--mono);
+  font-weight:700;
 }
-.caseName{ font-size:14px; font-weight:800; margin-bottom:10px; }
-.caseRow{ display:flex; gap:10px; margin-bottom:8px; font-size:13px; line-height:1.5; }
-.caseLabel{ color:var(--muted); font-weight:900; min-width:60px; font-family: var(--mono); }
-.caseValue{ color:var(--muted); flex:1; }
-.caseValue.highlight{ color:var(--ink); font-weight:900; }
-.caseMechanic{ margin-top:10px; padding-top:10px; border-top:1px solid rgba(10,10,10,.2); font-size:13px; color:var(--muted); }
 
-.divider{ height:1px; background: rgba(10,10,10,.2); margin:14px 0; }
+.caseName{
+  font-size:14px;
+  font-weight:700;
+  color: var(--ink);
+  margin-bottom:10px;
+}
 
-.bars{ margin-top: 12px; display:flex; flex-direction:column; gap:12px; }
-.barLeft{ display:flex; align-items:center; justify-content:space-between; gap:12px; }
-.barName{ font-size:12px; letter-spacing:.16em; font-weight:900; font-family: var(--mono); }
-.tag{ font-size:9px; letter-spacing:.2em; text-transform:uppercase; color:var(--muted); font-weight:900; font-family: var(--mono); }
-.tagHard{ color:var(--bg); background: var(--ink); padding:4px 8px; }
-.tagWarn{ color:var(--ink); background: var(--soft); padding:4px 8px; }
+.caseRow{
+  display:flex;
+  gap:10px;
+  margin-bottom:8px;
+  font-size:13px;
+  line-height:1.55;
+}
+
+.caseLabel{
+  color: rgba(10,10,10,.62);
+  font-weight:700;
+  min-width:60px;
+}
+
+.caseValue{ color: rgba(10,10,10,.78); flex:1; }
+.caseValue.highlight{ color: var(--ink); font-weight:700; }
+
+.caseMechanic{
+  margin-top:10px;
+  padding-top:10px;
+  border-top:1px solid rgba(10,10,10,.2);
+  font-size:13px;
+  line-height:1.55;
+  color: rgba(10,10,10,.65);
+}
+
+.divider{
+  height:2px;
+  background: rgba(10,10,10,.2);
+  margin:16px 0;
+}
+
+.bars{
+  margin-top: 14px;
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+
+.barLeft{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.barName{
+  font-size:12px;
+  letter-spacing:.14em;
+  font-weight:700;
+  color: var(--ink);
+}
+
+.tag{
+  font-size:9px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color: rgba(10,10,10,.45);
+  font-weight:700;
+}
+
+.tagHard{
+  color: var(--bg);
+  background: var(--ink);
+  padding:4px 8px;
+  border:2px solid var(--ink);
+}
+
+.tagWarn{
+  color: var(--ink);
+  background: rgba(10,10,10,.08);
+  padding:4px 8px;
+  border:2px solid rgba(10,10,10,.25);
+}
 
 .barWrap{
   position:relative;
-  border:1px solid var(--line);
+  border:2px solid var(--ink);
   height: 26px;
-  background: transparent;
+  background: rgba(255,255,255,.9);
   overflow:hidden;
 }
-.barIn{ height:100%; background: var(--ink); transition: width .45s ease; }
+
+.barIn{
+  height:100%;
+  background: var(--ink);
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+
 .barPct{
   position:absolute;
   right:10px;
@@ -1648,74 +1831,83 @@ const CSS = `
   transform: translateY(-50%);
   font-size:12px;
   color: var(--bg);
-  font-weight:900;
-  font-family: var(--mono);
+  font-weight:700;
   mix-blend-mode: difference;
 }
 
-.commitLadder{ display:flex; flex-direction:column; gap:10px; margin:14px 0; }
+.commitLadder{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+  margin:16px 0 10px;
+}
 
 .commitStep{
   display:flex;
   align-items:center;
-  gap:12px;
+  gap:14px;
   padding:14px;
-  border:1px solid var(--line);
-  background: transparent;
+  border:2px solid rgba(10,10,10,.35);
+  background: rgba(255,255,255,.9);
   cursor:pointer;
+  transition: all .18s cubic-bezier(.4,0,.2,1);
   text-align:left;
-  font-family: var(--sans);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
 }
-.commitStep:hover{ background: var(--panel2); }
-.commitStep.primary{ background: var(--ink); color: var(--bg); }
-.commitStep.primary:hover{ opacity:.92; }
+
+.commitStep:hover{
+  transform: translateY(-2px);
+  border-color: var(--ink);
+}
+
+.commitStep.primary{
+  border-color: var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+}
 
 .commitIcon{
-  width:40px; height:40px;
-  border:1px solid currentColor;
-  display:flex; align-items:center; justify-content:center;
+  width:40px;
+  height:40px;
+  border:2px solid currentColor;
+  display:flex;
+  align-items:center;
+  justify-content:center;
   flex-shrink:0;
 }
+
 .commitContent{ flex:1; }
-.commitTitle{ font-weight:900; font-size:13px; margin-bottom:4px; }
-.commitSub{ font-size:11px; color: var(--muted); }
-.commitStep.primary .commitSub{ color: rgba(246,242,234,.75); }
+.commitTitle{ font-weight:700; font-size:14px; margin-bottom:4px; }
+.commitSub{ font-size:11px; color: rgba(10,10,10,.55); }
+.commitStep.primary .commitSub{ color: rgba(246,241,232,.75); }
 
 .footer{
-  margin-top: 16px;
-  padding-bottom: 10px;
-}
-.footerRail{
-  height:1px;
-  background: var(--line);
-  margin-bottom: 10px;
-}
-.footerMeta{
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top:2px solid var(--ink);
   display:flex;
-  align-items:flex-start;
-  gap:10px;
+  align-items:center;
+  gap:12px;
 }
+
 .footerTag{
-  font-family: var(--mono);
+  border:2px solid var(--ink);
+  padding:6px 10px;
   font-size:10px;
   letter-spacing:.22em;
-  font-weight:900;
-  padding:6px 8px;
-  border:1px solid var(--line);
-  background: var(--panel);
-}
-.footerText{
-  font-size:12px;
-  color: var(--muted);
-  line-height:1.5;
-  max-width: 720px;
+  text-transform:uppercase;
+  font-weight:700;
+  background: var(--ink);
+  color: var(--bg);
 }
 
 @media (max-width: 640px){
-  .wrap{ padding:18px 14px 14px; }
+  .wrap{ padding:20px 16px 18px; }
   .top{ flex-direction:column; align-items:flex-start; }
+  .hero{ padding:14px 0 12px; }
+  .card{ padding:16px; }
   .ctaRow{ flex-direction:column; align-items:stretch; }
   .trust{ flex-direction:column; gap:10px; }
-  .resultGrid{ grid-template-columns: 1fr; }
+  .commitStep{ padding:12px; }
 }
-`;
+` as const;
