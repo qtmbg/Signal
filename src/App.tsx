@@ -1,37 +1,61 @@
-'use client';
-
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
   ChevronRight,
   CircleDashed,
-  ShieldAlert,
+  Clock,
+  Copy,
+  Send,
+  Target,
+  TrendingUp,
   Zap,
+  ShieldAlert,
   Layers,
   Cpu,
   Activity,
-  TrendingUp,
-  Clock,
-  Target,
-  Send,
 } from "lucide-react";
 
 /**
- * QTMBG — Signal OS (Vercel-safe, strict TS)
- * Branding: Sometype Mono (head + body)
- * Layout fixes:
- * - True centered hero titles (start + result)
- * - No awkward “dead space” (full-height layout + footer anchor)
- * - SSR-safe localStorage hydration
+ * QTMBG — Signal OS (vFinal)
+ * - Strict TS (Vercel-safe)
+ * - Single typography: Sometype Mono (head + body)
+ * - True white notebook paper background (no beige)
+ * - Consistent grid/padding/borders across ALL views
+ * - 12 questions, per-force averaging
  */
-
-// ------------------------ CONFIG ------------------------
 
 type ForceId = "essence" | "identity" | "offer" | "system" | "growth";
 type StageId = "launch" | "reposition" | "scale";
+type Choice = 1 | 3 | 5;
 
-const STORAGE_KEY = "qtmbg-signal-os-v3";
+type Question = {
+  id: string;
+  force: ForceId;
+  text: string;
+  a: { v: Choice; label: string };
+  b: { v: Choice; label: string };
+  c: { v: Choice; label: string };
+};
+
+type View = "start" | "scan" | "aha" | "result" | "email";
+
+type State = {
+  stage: StageId;
+  idx: number;
+  // store answers per question id
+  answers: Record<string, Choice | undefined>;
+  view: View;
+  createdAtISO: string;
+  ahaShown: boolean;
+  email: string;
+  name: string;
+  website: string;
+};
+
+const STORAGE_KEY = "qtmbg-signal-os-vfinal";
+
+// ------------------------ FORCES ------------------------
 
 const FORCES: Array<{
   id: ForceId;
@@ -52,7 +76,118 @@ const STAGES: Array<{ id: StageId; label: string; sub: string }> = [
   { id: "scale", label: "Scaling", sub: "You need throughput, not more hustle" },
 ];
 
-// BENCHMARKS
+// ------------------------ QUESTIONS (12) ------------------------
+
+const QUESTIONS: Question[] = [
+  // ESSENCE (1-3)
+  {
+    id: "e1",
+    force: "essence",
+    text: "If I land on your brand today… can I understand the unique mechanism you bring?",
+    a: { v: 1, label: "No — it sounds like generic services." },
+    b: { v: 3, label: "Somewhat — but it isn't named or sharp." },
+    c: { v: 5, label: "Yes — it's specific, named, and repeatable." },
+  },
+  {
+    id: "e2",
+    force: "essence",
+    text: "Can a stranger repeat your positioning sentence after 10 seconds on your homepage?",
+    a: { v: 1, label: "No — they'd guess or be confused." },
+    b: { v: 3, label: "Maybe — but they'd miss the point." },
+    c: { v: 5, label: "Yes — it's clear and sticky." },
+  },
+  {
+    id: "e3",
+    force: "essence",
+    text: "Do you have a point of view that repels the wrong buyers?",
+    a: { v: 1, label: "No — we try to be for everyone." },
+    b: { v: 3, label: "Some — but we avoid strong claims." },
+    c: { v: 5, label: "Yes — we own a sharp belief publicly." },
+  },
+
+  // IDENTITY (4-6)
+  {
+    id: "i1",
+    force: "identity",
+    text: "Do you look and sound like a premium authority in your space?",
+    a: { v: 1, label: "Not yet — it feels template or inconsistent." },
+    b: { v: 3, label: "Clean — but not memorable or high-status." },
+    c: { v: 5, label: "Yes — instantly premium and distinct." },
+  },
+  {
+    id: "i2",
+    force: "identity",
+    text: "Do your top 3 pages make the same promise with the same tone?",
+    a: { v: 1, label: "No — the signal changes page to page." },
+    b: { v: 3, label: "Some — but there are gaps." },
+    c: { v: 5, label: "Yes — one coherent signal everywhere." },
+  },
+  {
+    id: "i3",
+    force: "identity",
+    text: "Do you have proof that makes your pricing feel 'obvious' (not debated)?",
+    a: { v: 1, label: "No — mostly claims, little proof." },
+    b: { v: 3, label: "Some — but not structured." },
+    c: { v: 5, label: "Yes — proof stack + clear credibility assets." },
+  },
+
+  // OFFER (7-9)
+  {
+    id: "o1",
+    force: "offer",
+    text: "Is your flagship offer obvious and easy to choose?",
+    a: { v: 1, label: "No — it's custom, confusing, or too many options." },
+    b: { v: 3, label: "Kind of — but people still hesitate or negotiate." },
+    c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
+  },
+  {
+    id: "o2",
+    force: "offer",
+    text: "Do buyers know exactly what happens after they pay (in steps)?",
+    a: { v: 1, label: "No — delivery feels vague." },
+    b: { v: 3, label: "Some — but it isn't visual or structured." },
+    c: { v: 5, label: "Yes — clear path + milestones." },
+  },
+  {
+    id: "o3",
+    force: "offer",
+    text: "Do you have a designed ascension path (entry → flagship → premium)?",
+    a: { v: 1, label: "No — people buy randomly." },
+    b: { v: 3, label: "Some — but not intentional." },
+    c: { v: 5, label: "Yes — one ladder with rules." },
+  },
+
+  // SYSTEM (10-11)
+  {
+    id: "s1",
+    force: "system",
+    text: "Is lead flow predictable and controlled (not luck-based)?",
+    a: { v: 1, label: "No — it's feast/famine and manual chasing." },
+    b: { v: 3, label: "Somewhat — referrals + occasional wins." },
+    c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
+  },
+  {
+    id: "s2",
+    force: "system",
+    text: "Do you have one primary conversion path you optimize weekly?",
+    a: { v: 1, label: "No — everything is scattered." },
+    b: { v: 3, label: "Some — but it's inconsistent." },
+    c: { v: 5, label: "Yes — one happy path with clear metrics." },
+  },
+
+  // GROWTH (12)
+  {
+    id: "g1",
+    force: "growth",
+    text: "Do you have a single metric and a plan that scales without chaos?",
+    a: { v: 1, label: "No — I react to bank balance and urgency." },
+    b: { v: 3, label: "Some — I track revenue, but not signal/quality." },
+    c: { v: 5, label: "Yes — clear north star + weekly execution loop." },
+  },
+];
+
+// ------------------------ BENCHMARKS ------------------------
+
 const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }>> = {
   essence: {
     launch: { avg: 42, top10: 73 },
@@ -81,55 +216,8 @@ const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }
   },
 };
 
-type Choice = 1 | 3 | 5;
+// ------------------------ MICRO SYMPTOMS ------------------------
 
-type Question = {
-  force: ForceId;
-  text: string;
-  a: { v: Choice; label: string };
-  b: { v: Choice; label: string };
-  c: { v: Choice; label: string };
-};
-
-const QUESTIONS: Question[] = [
-  {
-    force: "essence",
-    text: "If I land on your brand today… can I understand the unique mechanism you bring?",
-    a: { v: 1, label: "No — it sounds like generic services." },
-    b: { v: 3, label: "Somewhat — but it isn't named or sharp." },
-    c: { v: 5, label: "Yes — it's specific, named, and repeatable." },
-  },
-  {
-    force: "identity",
-    text: "Do you look and sound like a premium authority in your space?",
-    a: { v: 1, label: "Not yet — it feels template or inconsistent." },
-    b: { v: 3, label: "Clean — but not memorable or high-status." },
-    c: { v: 5, label: "Yes — instantly premium and distinct." },
-  },
-  {
-    force: "offer",
-    text: "Is your flagship offer obvious and easy to choose?",
-    a: { v: 1, label: "No — it's custom, confusing, or too many options." },
-    b: { v: 3, label: "Kind of — but people still hesitate or negotiate." },
-    c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
-  },
-  {
-    force: "system",
-    text: "Is lead flow predictable and controlled (not luck-based)?",
-    a: { v: 1, label: "No — it's feast/famine and manual chasing." },
-    b: { v: 3, label: "Somewhat — referrals + occasional wins." },
-    c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
-  },
-  {
-    force: "growth",
-    text: "Do you have a single metric and a plan that scales without chaos?",
-    a: { v: 1, label: "No — I react to bank balance and urgency." },
-    b: { v: 3, label: "Some — I track revenue, but not signal/quality." },
-    c: { v: 5, label: "Yes — clear north star + weekly execution loop." },
-  },
-];
-
-// MICRO-SYMPTOMS
 const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   essence: {
     launch: [
@@ -218,55 +306,8 @@ const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   },
 };
 
-// CASE ANCHORS
-const CASE_ANCHORS: Record<
-  ForceId,
-  {
-    name: string;
-    role: string;
-    before: string;
-    after: string;
-    mechanic: string;
-  }
-> = {
-  essence: {
-    name: "Client A",
-    role: "Agency founder",
-    before: "'We do branding and strategy' + long calls to explain value",
-    after: "Named mechanism + shorter cycles + higher close rate",
-    mechanic: "Extract the IP hidden in delivery, name it, make it the offer.",
-  },
-  identity: {
-    name: "Client B",
-    role: "B2B consultant",
-    before: "Clean work, but looked generic → constant negotiation",
-    after: "Authority identity → 'clearly premium' perception",
-    mechanic: "Upgrade touchpoints to match expertise level, not comfort zone.",
-  },
-  offer: {
-    name: "Client C",
-    role: "Coaching business",
-    before: "Too many offers → decision paralysis",
-    after: "One obvious flagship path → faster buying",
-    mechanic: "Collapse options into one next step with constraints.",
-  },
-  system: {
-    name: "Client D",
-    role: "Service founder",
-    before: "Feast/famine, manual follow-up, unclear path",
-    after: "Repeatable pipeline + nurture loop",
-    mechanic: "Build a simple happy path with one filter at each stage.",
-  },
-  growth: {
-    name: "Client E",
-    role: "Founder",
-    before: "New tactics every week → reactive growth",
-    after: "One metric + weekly loop → predictable momentum",
-    mechanic: "Pick one lever for 90 days, ignore noise.",
-  },
-};
+// ------------------------ LEAK INTELLIGENCE ------------------------
 
-// LEAK INTELLIGENCE
 type LeakInfo = {
   leakName: string;
   humanSymptom: string;
@@ -291,10 +332,8 @@ const LEAKS: Record<ForceId, LeakInfo> = {
       "Rewrite the hero: Outcome + Mechanism + Proof + One CTA.",
       "Publish one belief you own (a clear 'this, not that').",
     ],
-    ifYouDont:
-      "You keep explaining instead of attracting. Calls feel like interviews. Revenue stays tied to hustle.",
-    ifYouDo:
-      "Inbound becomes pre-sold. Pricing becomes logical. People repeat your mechanism for you.",
+    ifYouDont: "You keep explaining instead of attracting. Calls feel like interviews. Revenue stays tied to hustle.",
+    ifYouDo: "Inbound becomes pre-sold. Pricing becomes logical. People repeat your mechanism for you.",
     auditReason:
       "The Audit locks positioning: claims, repulsion, proof stack, and the assets that justify premium pricing.",
   },
@@ -303,63 +342,49 @@ const LEAKS: Record<ForceId, LeakInfo> = {
     humanSymptom: "You're good, but you don't look expensive yet.",
     whatItMeans:
       "Your visual + verbal identity isn’t matching the level you want to charge. That creates doubt and negotiation.",
-    todayMove:
-      "Remove safe language. Replace with proof: outcomes, constraints, numbers, and one bold claim you can defend.",
+    todayMove: "Remove safe language. Replace with proof: outcomes, constraints, numbers, and one bold claim you can defend.",
     weekPlan: [
       "Kill generic visuals (introduce one signature element across touchpoints).",
       "Publish one authority post (your contrarian model).",
       "Upgrade the top 3 assets: homepage, offer page, one case study.",
     ],
-    ifYouDont:
-      "You keep justifying price. Prospects shop you against cheaper options. Resentment builds.",
-    ifYouDo:
-      "Price objections drop. Prospects interpret premium as obvious. Better leads arrive.",
-    auditReason:
-      "The Audit identifies credibility gaps and gives you a proof stack + messaging hierarchy.",
+    ifYouDont: "You keep justifying price. Prospects shop you against cheaper options. Resentment builds.",
+    ifYouDo: "Price objections drop. Prospects interpret premium as obvious. Better leads arrive.",
+    auditReason: "The Audit identifies credibility gaps and gives you a proof stack + messaging hierarchy.",
   },
   offer: {
     leakName: "VALUE CONFUSION",
     humanSymptom: "People like you… but don't buy fast.",
-    whatItMeans:
-      "No single obvious flagship path. Too many options or too much custom creates hesitation.",
-    todayMove:
-      'Choose one flagship. Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
+    whatItMeans: "No single obvious flagship path. Too many options or too much custom creates hesitation.",
+    todayMove: 'Choose one flagship. Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
     weekPlan: [
       "Collapse offers → 1 flagship + 1 entry or ascension step.",
       "Rewrite pricing page (one path, one CTA).",
       "Publish one teardown: show how your offer creates the after-state.",
     ],
-    ifYouDont:
-      "More proposals. More 'let me think.' Close rate stays fragile.",
-    ifYouDo:
-      "Decision time drops from weeks to days. Scarcity becomes real. Demand tightens.",
-    auditReason:
-      "The Audit aligns offer architecture, pricing logic, and conversion flow so buyers stop hesitating.",
+    ifYouDont: "More proposals. More 'let me think.' Close rate stays fragile.",
+    ifYouDo: "Decision time drops from weeks to days. Scarcity becomes real. Demand tightens.",
+    auditReason: "The Audit aligns offer architecture, pricing logic, and conversion flow so buyers stop hesitating.",
   },
   system: {
     leakName: "PIPELINE FRICTION",
     humanSymptom: "You're busy… but revenue isn't predictable.",
     whatItMeans:
       "Your path from attention → cash leaks. You might have demand signals, but not a controlled system.",
-    todayMove:
-      "Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.",
+    todayMove: "Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.",
     weekPlan: [
       "Install one lead capture + one follow-up email.",
       "Add one booking filter question to repel bad fits.",
       "Create one nurture loop (weekly proof + CTA).",
     ],
-    ifYouDont:
-      "Growth stays random. You work harder for unstable cash. Scaling becomes heavier.",
-    ifYouDo:
-      "You can forecast. You know inputs → outputs. You regain control.",
-    auditReason:
-      "The Audit maps the exact funnel leak: where prospects drop, why, and what to change first.",
+    ifYouDont: "Growth stays random. You work harder for unstable cash. Scaling becomes heavier.",
+    ifYouDo: "You can forecast. You know inputs → outputs. You regain control.",
+    auditReason: "The Audit maps the exact funnel leak: where prospects drop, why, and what to change first.",
   },
   growth: {
     leakName: "NO NORTH STAR",
     humanSymptom: "You’re moving… but direction keeps changing.",
-    whatItMeans:
-      "No clean metric + rhythm. Growth becomes reactive, emotional, and exhausting.",
+    whatItMeans: "No clean metric + rhythm. Growth becomes reactive, emotional, and exhausting.",
     todayMove:
       "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV). Track weekly on the same day.",
     weekPlan: [
@@ -367,58 +392,31 @@ const LEAKS: Record<ForceId, LeakInfo> = {
       "Build one referral trigger (ask at the moment of first win).",
       "Create a weekly review: metric → bottleneck → one fix → repeat.",
     ],
-    ifYouDont:
-      "More tactics, less momentum. Breakthrough stays out of reach.",
-    ifYouDo:
-      "Decisions become obvious. You build momentum without chaos.",
-    auditReason:
-      "The Audit identifies what to optimize first so you scale without chaos: signal, offer, or system.",
+    ifYouDont: "More tactics, less momentum. Breakthrough stays out of reach.",
+    ifYouDo: "Decisions become obvious. You build momentum without chaos.",
+    auditReason: "The Audit identifies what to optimize first so you scale without chaos: signal, offer, or system.",
   },
 };
+
+// ------------------------ HELPERS ------------------------
 
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
-
 function pctFromChoice(v: Choice) {
   if (v === 1) return 20;
   if (v === 3) return 60;
   return 100;
 }
-
-function sortForcesByWeakest(scores: Record<ForceId, number>) {
-  const pairs = (Object.keys(scores) as ForceId[]).map((k) => [k, scores[k]] as const);
-  return pairs.sort((a, b) => a[1] - b[1]);
+function avg(nums: number[]) {
+  if (!nums.length) return 0;
+  return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
-
-// ------------------------ UI ------------------------
-
-type View = "start" | "scan" | "aha" | "result" | "email";
-
-type State = {
-  stage: StageId;
-  idx: number;
-  answers: Partial<Record<ForceId, Choice>>;
-  view: View;
-  createdAtISO: string;
-  ahaShown: boolean;
-  email: string;
-  name: string;
-  website: string;
-};
-
-const DEFAULT_STATE: State = {
-  stage: "launch",
-  idx: 0,
-  answers: {},
-  view: "start",
-  createdAtISO: new Date().toISOString(),
-  ahaShown: false,
-  email: "",
-  name: "",
-  website: "",
-};
-
+function bandLabel(pct: number) {
+  if (pct >= 80) return "STRONG";
+  if (pct >= 55) return "UNSTABLE";
+  return "CRITICAL";
+}
 function loadStateSafe(): State | null {
   try {
     if (typeof window === "undefined") return null;
@@ -429,7 +427,6 @@ function loadStateSafe(): State | null {
     return null;
   }
 }
-
 function saveStateSafe(s: State) {
   try {
     if (typeof window === "undefined") return;
@@ -439,24 +436,18 @@ function saveStateSafe(s: State) {
   }
 }
 
-function bandLabel(pct: number) {
-  if (pct >= 80) return "STRONG";
-  if (pct >= 55) return "UNSTABLE";
-  return "CRITICAL";
-}
-
-// ------------------------ TIMER LOGIC ------------------------
+// ------------------------ TIMER ------------------------
 
 function useDecayTimer(createdAt: string) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
   }, []);
 
   const created = new Date(createdAt).getTime();
-  const expires = created + 48 * 60 * 60 * 1000; // 48 hours
+  const expires = created + 48 * 60 * 60 * 1000;
   const remaining = Math.max(0, expires - now);
 
   const hours = Math.floor(remaining / (60 * 60 * 1000));
@@ -466,35 +457,32 @@ function useDecayTimer(createdAt: string) {
   return { hours, mins, secs, expired: remaining === 0 };
 }
 
-// ------------------------ COMPONENTS ------------------------
+// ------------------------ UI COMPONENTS ------------------------
 
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="qbg">
       <style>{CSS}</style>
-
       <div className="wrap">
         <div className="main">{children}</div>
 
         <div className="footer">
           <span className="footerTag">QTMBG</span>
-          <span className="muted">
-            Signal OS is a scan, not a full audit. Use it to convert insight into action.
-          </span>
+          <span className="muted">Signal OS is a scan, not a full audit. Use it to convert insight into action.</span>
         </div>
       </div>
     </div>
   );
 }
 
-function TopBar({ rightText }: { rightText: string }) {
+function HeaderMini({ rightText }: { rightText?: string }) {
   return (
-    <div className="topbar">
-      <div className="brandRow">
-        <span className="brandBadge">QUANTUM BRANDING</span>
-        <span className="brandTitle">Signal OS</span>
+    <div className="top">
+      <div className="brand">
+        <span className="brandBox">QUANTUM BRANDING</span>
+        <span className="brandName">Signal OS</span>
       </div>
-      <div className="topmeta">{rightText}</div>
+      <div className="muted tiny">{rightText || "~3 min • 12 questions • primary leak"}</div>
     </div>
   );
 }
@@ -517,12 +505,7 @@ function Btn({
   icon?: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      className={`btn ${variant} ${disabled ? "disabled" : ""}`}
-      onClick={onClick}
-      disabled={disabled}
-    >
+    <button type="button" className={`btn ${variant} ${disabled ? "disabled" : ""}`} onClick={onClick} disabled={disabled}>
       {icon}
       {children}
       <ArrowRight size={16} />
@@ -540,12 +523,7 @@ function StagePicker({ value, onChange }: { value: StageId; onChange: (s: StageI
         {STAGES.map((s) => {
           const active = value === s.id;
           return (
-            <button
-              key={s.id}
-              type="button"
-              className={`stage ${active ? "active" : ""}`}
-              onClick={() => onChange(s.id)}
-            >
+            <button key={s.id} type="button" className={`stage ${active ? "active" : ""}`} onClick={() => onChange(s.id)}>
               <div className="stageTitle">{s.label}</div>
               <div className="tiny muted">{s.sub}</div>
             </button>
@@ -583,20 +561,56 @@ function DecayTimer({ createdAt }: { createdAt: string }) {
       <span>
         Insights expire in{" "}
         <strong>
-          {hours.toString().padStart(2, "0")}:{mins.toString().padStart(2, "0")}:
-          {secs.toString().padStart(2, "0")}
+          {hours.toString().padStart(2, "0")}:{mins.toString().padStart(2, "0")}:{secs.toString().padStart(2, "0")}
         </strong>
       </span>
     </div>
   );
 }
 
-// ------------------------ MAIN ------------------------
+function CopyBlock({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
 
-export default function Page() {
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      // ignore
+    }
+  };
+
+  return (
+    <button className="copyBlock" type="button" onClick={copy} aria-label="Copy">
+      <span className="copyIcon">
+        <Copy size={14} />
+      </span>
+      <span className="copyText">{text}</span>
+      <span className={`copyTag ${copied ? "on" : ""}`}>{copied ? "COPIED" : "COPY"}</span>
+    </button>
+  );
+}
+
+// ------------------------ APP ------------------------
+
+const DEFAULT_STATE: State = {
+  stage: "launch",
+  idx: 0,
+  answers: {},
+  view: "start",
+  createdAtISO: new Date().toISOString(),
+  ahaShown: false,
+  email: "",
+  name: "",
+  website: "",
+};
+
+export default function App() {
   const [state, setState] = useState<State>(DEFAULT_STATE);
+  const startedRef = useRef(false);
 
-  // SSR-safe hydration (loads persisted state on client)
+  // SSR-safe hydration
   useEffect(() => {
     const loaded = loadStateSafe();
     if (loaded) setState(loaded);
@@ -606,36 +620,49 @@ export default function Page() {
     saveStateSafe(state);
   }, [state]);
 
-  // scroll to top on view changes (keeps UX tight)
+  // scroll to top on view change
   useEffect(() => {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   }, [state.view]);
 
   const total = QUESTIONS.length;
 
-  const scores = useMemo(() => {
-    const s: Record<ForceId, number> = {
-      essence: 0,
-      identity: 0,
-      offer: 0,
-      system: 0,
-      growth: 0,
+  // compute per-force avg from answers
+  const forceScores = useMemo(() => {
+    const buckets: Record<ForceId, number[]> = {
+      essence: [],
+      identity: [],
+      offer: [],
+      system: [],
+      growth: [],
     };
-    (Object.keys(s) as ForceId[]).forEach((f) => {
-      const v = state.answers[f];
-      s[f] = v ? pctFromChoice(v) : 0;
+
+    QUESTIONS.forEach((q) => {
+      const v = state.answers[q.id];
+      if (v) buckets[q.force].push(pctFromChoice(v));
     });
-    return s;
+
+    const out: Record<ForceId, number> = {
+      essence: avg(buckets.essence),
+      identity: avg(buckets.identity),
+      offer: avg(buckets.offer),
+      system: avg(buckets.system),
+      growth: avg(buckets.growth),
+    };
+
+    return out;
   }, [state.answers]);
 
   const diagnosis = useMemo(() => {
-    const sorted = sortForcesByWeakest(scores);
-    const primary = sorted[0]?.[0] ?? "essence";
-    const secondary = sorted[1]?.[0] ?? "identity";
+    const pairs = (Object.keys(forceScores) as ForceId[]).map((k) => [k, forceScores[k]] as const);
+    pairs.sort((a, b) => a[1] - b[1]);
+    const primary = pairs[0]?.[0] ?? "essence";
+    const secondary = pairs[1]?.[0] ?? "identity";
     return { primary, secondary };
-  }, [scores]);
+  }, [forceScores]);
 
   const startScan = () => {
+    startedRef.current = true;
     setState((prev) => ({
       ...prev,
       view: "scan",
@@ -646,35 +673,24 @@ export default function Page() {
     }));
   };
 
-  const pick = (force: ForceId, v: Choice) => {
+  const pick = (qid: string, v: Choice) => {
     setState((prev) => {
-      const nextAnswers = { ...prev.answers, [force]: v };
+      const nextAnswers = { ...prev.answers, [qid]: v };
       const nextIdx = prev.idx + 1;
 
-      if (nextIdx === 2 && !prev.ahaShown) {
-        return { ...prev, answers: nextAnswers, idx: nextIdx, view: "aha" };
+      if (nextIdx === 3 && !prev.ahaShown) {
+        return { ...prev, answers: nextAnswers, idx: nextIdx, view: "aha", ahaShown: true };
       }
 
       if (nextIdx >= total) {
-        return {
-          ...prev,
-          answers: nextAnswers,
-          idx: total - 1,
-          view: "result",
-        };
+        return { ...prev, answers: nextAnswers, idx: total - 1, view: "result" };
       }
 
       return { ...prev, answers: nextAnswers, idx: nextIdx };
     });
   };
 
-  const continueFromAha = () => {
-    setState((prev) => ({ ...prev, view: "scan", ahaShown: true }));
-  };
-
-  const goBack = () => {
-    setState((prev) => ({ ...prev, idx: Math.max(0, prev.idx - 1) }));
-  };
+  const goBack = () => setState((prev) => ({ ...prev, idx: Math.max(0, prev.idx - 1) }));
 
   const restart = () => {
     try {
@@ -685,22 +701,24 @@ export default function Page() {
     setState({ ...DEFAULT_STATE, createdAtISO: new Date().toISOString() });
   };
 
-  const toEmail = () => setState((prev) => ({ ...prev, view: "email" }));
+  const toEmail = () => setState((p) => ({ ...p, view: "email" }));
 
   const submitEmail = () => {
-    // hook to your backend later
+    // hook to backend later
+    // eslint-disable-next-line no-console
     console.log("Email capture:", { email: state.email, name: state.name, website: state.website });
     alert(`Thanks ${state.name || "there"}! You'll get the breakdown by email.`);
-    setState((prev) => ({ ...prev, view: "result" }));
+    setState((p) => ({ ...p, view: "result" }));
   };
 
   const toAudit = () => {
+    const { primary, secondary } = diagnosis;
     const params = new URLSearchParams({
       from: "signal",
       stage: state.stage,
-      primary: diagnosis.primary,
-      secondary: diagnosis.secondary,
-      scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(","),
+      primary,
+      secondary,
+      scores: (Object.keys(forceScores) as ForceId[]).map((k) => `${k}-${forceScores[k]}`).join(","),
       ...(state.name && { name: state.name }),
       ...(state.email && { email: state.email }),
       ...(state.website && { website: state.website }),
@@ -716,7 +734,7 @@ export default function Page() {
   if (state.view === "start") {
     return (
       <AppShell>
-        <TopBar rightText="~3–5 min • 12 questions • primary leak" />
+        <HeaderMini />
 
         <div className="hero">
           <div className="kicker center">SIGNAL SCAN</div>
@@ -757,14 +775,13 @@ export default function Page() {
   }
 
   if (state.view === "aha") {
-    const sortedSoFar = sortForcesByWeakest(scores);
-    const emerging = sortedSoFar[0]?.[0] ?? "essence";
+    const emerging = diagnosis.primary;
     const emergingMeta = FORCES.find((f) => f.id === emerging)!;
     const EmergingIcon = emergingMeta.icon;
 
     return (
       <AppShell>
-        <TopBar rightText="~3–5 min • 12 questions • primary leak" />
+        <HeaderMini rightText="pattern check • fast feedback • confirm leak" />
 
         <Card className="aha">
           <div className="ahaIcon">
@@ -774,8 +791,7 @@ export default function Page() {
           <div className="ahaTitle">Pattern detected.</div>
 
           <div className="ahaText">
-            Based on your first answers, I’m seeing a potential leak in your{" "}
-            <strong>{emergingMeta.label}</strong>.
+            Based on your answers so far, I’m seeing a potential leak in your <strong>{emergingMeta.label}</strong>.
           </div>
 
           <div className="ahaForce">
@@ -787,32 +803,25 @@ export default function Page() {
           </div>
 
           <div className="ahaHint">
-            {emerging === "essence" &&
-              "This usually means your mechanism isn’t named or sharp enough to create instant trust."}
-            {emerging === "identity" &&
-              "This usually means your identity isn’t matching the level you want to charge."}
-            {emerging === "offer" &&
-              "This usually means you don’t have one obvious flagship path — too many options create paralysis."}
-            {emerging === "system" &&
-              "This usually means lead flow is unpredictable — more feast/famine than controlled pipeline."}
-            {emerging === "growth" &&
-              "This usually means you’re reacting to urgency instead of tracking the right metric."}
+            {emerging === "essence" && "This usually means your mechanism isn’t named or sharp enough to create instant trust."}
+            {emerging === "identity" && "This usually means your identity isn’t matching the level you want to charge."}
+            {emerging === "offer" && "This usually means you don’t have one obvious flagship path — too many options create paralysis."}
+            {emerging === "system" && "This usually means lead flow is unpredictable — more feast/famine than controlled pipeline."}
+            {emerging === "growth" && "This usually means you’re reacting to urgency instead of tracking the right metric."}
           </div>
 
           <div className="ahaQuestion">Sound familiar?</div>
 
           <div className="ctaRow">
-            <Btn variant="primary" onClick={continueFromAha}>
+            <Btn variant="primary" onClick={() => setState((p) => ({ ...p, view: "scan" }))}>
               Yes — confirm it
             </Btn>
-            <Btn variant="secondary" onClick={continueFromAha}>
+            <Btn variant="secondary" onClick={() => setState((p) => ({ ...p, view: "scan" }))}>
               Not sure — keep going
             </Btn>
           </div>
 
-          <div className="tiny muted">
-            This is pattern recognition. The next questions confirm or refine the diagnosis.
-          </div>
+          <div className="tiny muted">This is pattern recognition. The next questions confirm or refine the diagnosis.</div>
         </Card>
       </AppShell>
     );
@@ -825,7 +834,7 @@ export default function Page() {
 
     return (
       <AppShell>
-        <TopBar rightText="~3–5 min • 12 questions • primary leak" />
+        <HeaderMini />
 
         <div className="scanHead">
           <div className="scanLeft">
@@ -853,7 +862,7 @@ export default function Page() {
           <div className="qText">{q.text}</div>
 
           <div className="choices">
-            <button className="choice" type="button" onClick={() => pick(q.force, q.a.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.id, q.a.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -861,7 +870,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q.force, q.b.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.id, q.b.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -869,7 +878,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q.force, q.c.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.id, q.c.v)}>
               <div className="choiceDot">
                 <CheckCircle2 size={14} />
               </div>
@@ -885,14 +894,12 @@ export default function Page() {
   if (state.view === "email") {
     return (
       <AppShell>
-        <TopBar rightText="export • email" />
+        <HeaderMini rightText="export • save • send to yourself" />
 
         <div className="hero">
           <div className="kicker center">EXPORT</div>
           <div className="h1 center">Email the breakdown + keep it.</div>
-          <div className="sub center">
-            I’ll send your leak analysis, benchmarks, and a clean next-step plan.
-          </div>
+          <div className="sub center">I’ll send your leak analysis, benchmarks, and a clean next-step plan.</div>
         </div>
 
         <Card>
@@ -905,9 +912,10 @@ export default function Page() {
               type="email"
               value={state.email}
               onChange={(e) => setState((p) => ({ ...p, email: e.target.value }))}
-              placeholder="your@email.com"
+              placeholder="you@email.com"
               autoComplete="email"
             />
+            <div className="tiny muted">We only require this when you export / save.</div>
           </div>
 
           <div className="grid2">
@@ -930,19 +938,14 @@ export default function Page() {
                 type="url"
                 value={state.website}
                 onChange={(e) => setState((p) => ({ ...p, website: e.target.value }))}
-                placeholder="yoursite.com"
+                placeholder="https://yoursite.com"
                 autoComplete="url"
               />
             </div>
           </div>
 
           <div className="ctaRow">
-            <Btn
-              variant="primary"
-              onClick={submitEmail}
-              disabled={!state.email}
-              icon={<Send size={16} />}
-            >
+            <Btn variant="primary" onClick={submitEmail} disabled={!state.email} icon={<Send size={16} />}>
               Email me the breakdown
             </Btn>
             <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: "result" }))}>
@@ -950,29 +953,31 @@ export default function Page() {
             </button>
           </div>
 
-          <div className="tiny muted">
-            No spam. One useful email with your analysis.
-          </div>
+          <div className="tiny muted">No spam. One useful email with your analysis.</div>
         </Card>
       </AppShell>
     );
   }
 
-  // RESULT
+  // RESULT VIEW
   const primary = diagnosis.primary;
   const secondary = diagnosis.secondary;
+
   const primaryInfo = LEAKS[primary];
   const primaryMeta = FORCES.find((f) => f.id === primary)!;
-  const caseAnchor = CASE_ANCHORS[primary];
   const symptoms = MICRO_SYMPTOMS[primary][state.stage];
   const benchmark = BENCHMARKS[primary][state.stage];
-  const primaryScore = scores[primary];
+  const primaryScore = forceScores[primary];
+
   const gap = benchmark.avg - primaryScore;
   const topGap = benchmark.top10 - primaryScore;
 
+  // a clean positioning sentence you can copy
+  const sentence = primary === "essence" ? "I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME]." : "";
+
   return (
     <AppShell>
-      <TopBar rightText="results • primary leak" />
+      <HeaderMini rightText="results • primary leak • next move" />
 
       <DecayTimer createdAt={state.createdAtISO} />
 
@@ -1003,6 +1008,13 @@ export default function Page() {
             <div className="panelTitle mt">Today move</div>
             <div className="panelText strong">{primaryInfo.todayMove}</div>
 
+            {sentence ? (
+              <>
+                <div className="panelTitle mt">Copy this</div>
+                <CopyBlock text={sentence} />
+              </>
+            ) : null}
+
             <div className="panelTitle mt">7-day micro-plan</div>
             <ul className="list">
               {primaryInfo.weekPlan.map((w, i) => (
@@ -1025,6 +1037,7 @@ export default function Page() {
                 <span className="benchValue">{benchmark.top10}</span>
               </div>
             </div>
+
             <div className="panelText small">
               You are <strong>{Math.abs(gap)} points</strong> {gap < 0 ? "above" : "below"} average and{" "}
               <strong>{Math.abs(topGap)} points</strong> from premium positioning.
@@ -1048,29 +1061,12 @@ export default function Page() {
           </div>
 
           <div className="panel soft">
-            <div className="caseAnchor">
-              <div className="caseTitle">What fixing it looks like:</div>
-              <div className="caseName">
-                {caseAnchor.name} — {caseAnchor.role}
-              </div>
-              <div className="caseRow">
-                <span className="caseLabel">Before:</span>
-                <span className="caseValue">{caseAnchor.before}</span>
-              </div>
-              <div className="caseRow">
-                <span className="caseLabel">After:</span>
-                <span className="caseValue highlight">{caseAnchor.after}</span>
-              </div>
-              <div className="caseMechanic">{caseAnchor.mechanic}</div>
-            </div>
-
-            <div className="divider" />
-
             <div className="panelTitle">Signal snapshot</div>
+
             <div className="bars">
-              {(Object.keys(scores) as ForceId[]).map((f) => {
+              {(Object.keys(forceScores) as ForceId[]).map((f) => {
                 const meta = FORCES.find((x) => x.id === f)!;
-                const pct = scores[f];
+                const pct = forceScores[f];
                 const isPrimary = f === primary;
                 const isSecondary = f === secondary;
                 const tag = isPrimary ? "PRIMARY LEAK" : isSecondary ? "SECONDARY" : bandLabel(pct);
@@ -1079,9 +1075,7 @@ export default function Page() {
                   <div key={f} className="barRow">
                     <div className="barLeft">
                       <div className="barName">{meta.label}</div>
-                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>
-                        {tag}
-                      </div>
+                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>{tag}</div>
                     </div>
                     <div className="barWrap">
                       <div className="barIn" style={{ width: `${pct}%` }} />
@@ -1092,7 +1086,9 @@ export default function Page() {
               })}
             </div>
 
-            <div className="panelTitle mt">Next step options</div>
+            <div className="divider" />
+
+            <div className="panelTitle">Next step options</div>
             <div className="panelText small">{primaryInfo.auditReason}</div>
 
             <div className="commitLadder">
@@ -1134,9 +1130,7 @@ export default function Page() {
               New scan
             </button>
 
-            <div className="tiny muted mt">
-              We pass your leak + scores into the Audit so you don’t start from zero.
-            </div>
+            <div className="tiny muted mt">We pass your leak + scores into the Audit so you don’t start from zero.</div>
           </div>
         </div>
       </Card>
@@ -1151,36 +1145,37 @@ const CSS = `
 
 :root{
   --bg: #ffffff;
-  --paper: #ffffff;
+  --paper: rgba(255,255,255,.96);
   --ink: #0a0a0a;
-  --muted: rgba(10,10,10,.62);
-  --stroke: rgba(10,10,10,.85);
-  --hair: rgba(10,10,10,.16);
+  --muted: #6f6f6f;
+  --rule: rgba(10,10,10,.55);
+  --rule2: rgba(10,10,10,.10);
+  --rule3: rgba(10,10,10,.06);
 }
 
 *{margin:0;padding:0;box-sizing:border-box;}
 
 .qbg{
   min-height:100vh;
+  background: var(--bg);
   color: var(--ink);
   font-family: 'Sometype Mono', ui-monospace, monospace;
   line-height:1.55;
   display:flex;
-  background: var(--bg);
-  /* notebook lines (horizontal) + faint vertical grid + margin line */
+
+  /* notebook paper: faint grid + subtle horizontal ruling */
   background-image:
-    linear-gradient(to bottom, rgba(10,10,10,.06) 1px, transparent 1px),
-    linear-gradient(to right, rgba(10,10,10,.03) 1px, transparent 1px),
-    linear-gradient(to right, rgba(220,38,38,.10) 2px, transparent 2px);
-  background-size: 100% 28px, 72px 100%, 1px 100%;
-  background-position: 0 0, 0 0, 72px 0;
+    linear-gradient(to right, var(--rule3) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--rule3) 1px, transparent 1px),
+    repeating-linear-gradient(to bottom, rgba(10,10,10,.05) 0px, rgba(10,10,10,.05) 1px, transparent 1px, transparent 34px);
+  background-size: 48px 48px, 48px 48px, auto;
 }
 
 .wrap{
   width:100%;
-  max-width: 1126px;
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 22px 20px 22px;
+  padding: 26px 20px 22px;
   display:flex;
   flex-direction:column;
   flex:1;
@@ -1188,43 +1183,37 @@ const CSS = `
 
 .main{ flex:1; }
 
-.topbar{
+.top{
   display:flex;
-  align-items:center;
+  align-items:flex-end;
   justify-content:space-between;
-  gap: 12px;
-  padding: 12px 0 14px;
-  border-bottom: 2px solid var(--stroke);
+  gap:16px;
+  padding-bottom: 18px;
+  border-bottom:2px solid var(--ink);
+  margin-bottom: 22px;
 }
 
-.brandRow{
+.brand{
   display:flex;
   align-items:center;
-  gap: 14px;
+  gap:12px;
 }
 
-.brandBadge{
-  border: 2px solid var(--stroke);
+.brandBox{
+  border:2px solid var(--ink);
+  padding:8px 12px;
+  font-size:10px;
+  letter-spacing:.22em;
+  text-transform:uppercase;
+  font-weight:700;
   background: var(--ink);
-  color: var(--paper);
-  padding: 8px 12px;
-  font-size: 12px;
-  letter-spacing: .18em;
-  text-transform: uppercase;
-  font-weight: 700;
+  color: var(--bg);
 }
 
-.brandTitle{
-  font-size: 18px;
-  font-weight: 600;
-  letter-spacing: -.01em;
-}
-
-.topmeta{
-  font-size: 12px;
-  color: rgba(10,10,10,.55);
-  letter-spacing: .02em;
-  white-space: nowrap;
+.brandName{
+  font-size:16px;
+  letter-spacing:.02em;
+  font-weight:500;
 }
 
 .muted{ color: var(--muted); }
@@ -1233,7 +1222,7 @@ const CSS = `
 
 .hero{
   padding: 18px 0 16px;
-  max-width: 1040px;
+  max-width: 980px;
   margin: 0 auto;
   text-align:center;
 }
@@ -1244,7 +1233,7 @@ const CSS = `
   font-size:11px;
   letter-spacing:.24em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.55);
+  color: var(--muted);
   margin-bottom:12px;
   font-weight:700;
 }
@@ -1253,7 +1242,7 @@ const CSS = `
   font-size: clamp(32px, 5vw, 64px);
   line-height: 1.04;
   letter-spacing: -0.02em;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .h1.leak{
@@ -1262,20 +1251,20 @@ const CSS = `
   padding:14px 18px;
   margin-top:6px;
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
 }
 
 .sub{
   margin-top:14px;
   font-size:15px;
   line-height:1.65;
-  color: rgba(10,10,10,.75);
+  color: rgba(10,10,10,.78);
   max-width: 760px;
   margin-left:auto;
   margin-right:auto;
 }
 
-.sub b{ color: var(--ink); font-weight:800; }
+.sub b{ color: var(--ink); font-weight:700; }
 
 .card{
   border:2px solid var(--ink);
@@ -1289,7 +1278,7 @@ const CSS = `
 }
 
 .card.symptoms{
-  background: rgba(255,255,255,.85);
+  background: rgba(255,255,255,.9);
 }
 
 .grid2{
@@ -1308,9 +1297,9 @@ const CSS = `
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.55);
+  color: var(--muted);
   margin-bottom:10px;
-  font-weight:800;
+  font-weight:700;
 }
 
 .req{ color: var(--ink); }
@@ -1349,13 +1338,13 @@ const CSS = `
 
 .stage.active{
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
 }
 
 .stage.active .muted{ color: rgba(255,255,255,.75); }
 
 .stageTitle{
-  font-weight:800;
+  font-weight:700;
   letter-spacing:-0.01em;
   font-size:16px;
 }
@@ -1372,12 +1361,12 @@ const CSS = `
   cursor:pointer;
   transition: all .18s cubic-bezier(.4,0,.2,1);
   font-family: 'Sometype Mono', ui-monospace, monospace;
-  font-weight:800;
+  font-weight:700;
 }
 
 .btn.primary{
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
 }
 
 .btn.primary:hover{ transform: translateY(-2px); }
@@ -1395,7 +1384,7 @@ const CSS = `
   background:transparent;
   border:none;
   padding:0;
-  color: rgba(10,10,10,.55);
+  color: var(--muted);
   text-decoration: underline;
   cursor:pointer;
   font-family: 'Sometype Mono', ui-monospace, monospace;
@@ -1425,7 +1414,7 @@ const CSS = `
   align-items:center;
   gap:8px;
   font-size:12px;
-  color: rgba(10,10,10,.72);
+  color: rgba(10,10,10,.75);
 }
 
 .scanHead{
@@ -1443,7 +1432,7 @@ const CSS = `
 }
 
 .forceName{
-  font-weight:800;
+  font-weight:700;
   letter-spacing:.14em;
   font-size:14px;
 }
@@ -1466,7 +1455,7 @@ const CSS = `
   font-size: 22px;
   line-height: 1.35;
   letter-spacing: -0.01em;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 18px;
   color: var(--ink);
 }
@@ -1516,20 +1505,20 @@ const CSS = `
   align-items:center;
   gap:10px;
   padding:12px 14px;
-  background: rgba(255,255,255,.92);
+  background: rgba(255,255,255,.95);
   border:2px solid var(--ink);
   margin-bottom:14px;
   font-size:12px;
-  color: rgba(10,10,10,.72);
+  color: rgba(10,10,10,.75);
 }
 
 .timer.expired{
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
 }
 
-.timer strong{ color: var(--ink); font-weight:800; }
-.timer.expired strong{ color: var(--paper); }
+.timer strong{ color: var(--ink); font-weight:700; }
+.timer.expired strong{ color: var(--bg); }
 
 .ahaIcon{
   margin:0 auto 18px;
@@ -1543,14 +1532,14 @@ const CSS = `
 
 .ahaTitle{
   font-size:28px;
-  font-weight:800;
+  font-weight:700;
   margin-bottom:14px;
 }
 
 .ahaText{
   font-size:15px;
   line-height:1.65;
-  color: rgba(10,10,10,.75);
+  color: rgba(10,10,10,.78);
   margin-bottom:18px;
   max-width:640px;
   margin-left:auto;
@@ -1568,7 +1557,7 @@ const CSS = `
 }
 
 .ahaForceName{
-  font-weight:800;
+  font-weight:700;
   letter-spacing:.12em;
 }
 
@@ -1584,7 +1573,7 @@ const CSS = `
 
 .ahaQuestion{
   font-size:18px;
-  font-weight:700;
+  font-weight:600;
   margin:18px 0 16px;
 }
 
@@ -1593,7 +1582,7 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   color: rgba(10,10,10,.68);
-  font-weight:800;
+  font-weight:700;
   margin-bottom:14px;
 }
 
@@ -1631,15 +1620,15 @@ const CSS = `
 }
 
 .panel.soft{
-  background: rgba(255,255,255,.85);
+  background: rgba(255,255,255,.9);
 }
 
 .panelTitle{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.62);
-  font-weight:800;
+  color: rgba(10,10,10,.65);
+  font-weight:700;
   margin-bottom:10px;
 }
 
@@ -1650,7 +1639,7 @@ const CSS = `
 }
 
 .panelText.strong{
-  font-weight:800;
+  font-weight:700;
   color: var(--ink);
   font-size:15px;
 }
@@ -1671,7 +1660,7 @@ const CSS = `
   flex-direction:column;
   gap:10px;
   padding:14px;
-  background: rgba(255,255,255,.7);
+  background: rgba(255,255,255,.9);
   border:2px solid rgba(10,10,10,.25);
   margin-bottom:12px;
 }
@@ -1684,13 +1673,13 @@ const CSS = `
 }
 
 .benchRow.strong{
-  font-weight:800;
+  font-weight:700;
   padding-top:8px;
   border-top:1px solid rgba(10,10,10,.2);
 }
 
 .benchLabel{ color: rgba(10,10,10,.62); }
-.benchValue{ font-weight:800; font-size:16px; color: var(--ink); }
+.benchValue{ font-weight:700; font-size:16px; color: var(--ink); }
 
 .outcomes{
   margin-top:18px;
@@ -1702,7 +1691,7 @@ const CSS = `
 .outcome{
   padding:14px;
   border:2px solid rgba(10,10,10,.35);
-  background: rgba(255,255,255,.8);
+  background: rgba(255,255,255,.92);
 }
 
 .outcomeLabel{
@@ -1710,7 +1699,7 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   margin-bottom:8px;
-  font-weight:800;
+  font-weight:700;
   color: rgba(10,10,10,.65);
 }
 
@@ -1718,55 +1707,6 @@ const CSS = `
   font-size:13px;
   line-height:1.55;
   color: rgba(10,10,10,.78);
-}
-
-.caseAnchor{
-  padding:16px;
-  background: rgba(255,255,255,.9);
-  border:2px solid rgba(10,10,10,.35);
-  margin-bottom:16px;
-}
-
-.caseTitle{
-  font-size:11px;
-  letter-spacing:.18em;
-  text-transform:uppercase;
-  color: rgba(10,10,10,.65);
-  margin-bottom:12px;
-  font-weight:800;
-}
-
-.caseName{
-  font-size:14px;
-  font-weight:800;
-  color: var(--ink);
-  margin-bottom:10px;
-}
-
-.caseRow{
-  display:flex;
-  gap:10px;
-  margin-bottom:8px;
-  font-size:13px;
-  line-height:1.55;
-}
-
-.caseLabel{
-  color: rgba(10,10,10,.62);
-  font-weight:800;
-  min-width:60px;
-}
-
-.caseValue{ color: rgba(10,10,10,.78); flex:1; }
-.caseValue.highlight{ color: var(--ink); font-weight:800; }
-
-.caseMechanic{
-  margin-top:10px;
-  padding-top:10px;
-  border-top:1px solid rgba(10,10,10,.2);
-  font-size:13px;
-  line-height:1.55;
-  color: rgba(10,10,10,.65);
 }
 
 .divider{
@@ -1782,6 +1722,8 @@ const CSS = `
   gap:12px;
 }
 
+.barRow{ display:flex; flex-direction:column; gap:8px; }
+
 .barLeft{
   display:flex;
   align-items:center;
@@ -1792,7 +1734,7 @@ const CSS = `
 .barName{
   font-size:12px;
   letter-spacing:.14em;
-  font-weight:800;
+  font-weight:700;
   color: var(--ink);
 }
 
@@ -1801,11 +1743,11 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   color: rgba(10,10,10,.45);
-  font-weight:800;
+  font-weight:700;
 }
 
 .tagHard{
-  color: var(--paper);
+  color: var(--bg);
   background: var(--ink);
   padding:4px 8px;
   border:2px solid var(--ink);
@@ -1838,8 +1780,8 @@ const CSS = `
   top:50%;
   transform: translateY(-50%);
   font-size:12px;
-  color: var(--paper);
-  font-weight:800;
+  color: var(--bg);
+  font-weight:700;
   mix-blend-mode: difference;
 }
 
@@ -1856,7 +1798,7 @@ const CSS = `
   gap:14px;
   padding:14px;
   border:2px solid rgba(10,10,10,.35);
-  background: rgba(255,255,255,.92);
+  background: rgba(255,255,255,.95);
   cursor:pointer;
   transition: all .18s cubic-bezier(.4,0,.2,1);
   text-align:left;
@@ -1871,7 +1813,7 @@ const CSS = `
 .commitStep.primary{
   border-color: var(--ink);
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
 }
 
 .commitIcon{
@@ -1885,38 +1827,85 @@ const CSS = `
 }
 
 .commitContent{ flex:1; }
-.commitTitle{ font-weight:800; font-size:14px; margin-bottom:4px; }
+.commitTitle{ font-weight:700; font-size:14px; margin-bottom:4px; }
 .commitSub{ font-size:11px; color: rgba(10,10,10,.55); }
 .commitStep.primary .commitSub{ color: rgba(255,255,255,.75); }
 
 .footer{
   margin-top: 18px;
   padding-top: 14px;
-  border-top:2px solid var(--stroke);
+  border-top:2px solid var(--ink);
   display:flex;
   align-items:center;
   gap:12px;
 }
 
 .footerTag{
-  border:2px solid var(--stroke);
+  border:2px solid var(--ink);
   padding:6px 10px;
   font-size:10px;
   letter-spacing:.22em;
   text-transform:uppercase;
-  font-weight:800;
+  font-weight:700;
   background: var(--ink);
-  color: var(--paper);
+  color: var(--bg);
+}
+
+/* copy block */
+.copyBlock{
+  width:100%;
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:12px 12px;
+  border:2px solid rgba(10,10,10,.35);
+  background: rgba(255,255,255,.96);
+  cursor:pointer;
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+  font-family: 'Sometype Mono', ui-monospace, monospace;
+  text-align:left;
+}
+
+.copyBlock:hover{ transform: translateY(-2px); border-color: var(--ink); }
+
+.copyIcon{
+  width:30px; height:30px;
+  border:2px solid rgba(10,10,10,.35);
+  display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+}
+
+.copyText{
+  flex:1;
+  font-size:13px;
+  color: rgba(10,10,10,.78);
+  line-height:1.45;
+}
+
+.copyTag{
+  font-size:9px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  font-weight:700;
+  padding:5px 8px;
+  border:2px solid rgba(10,10,10,.25);
+  color: rgba(10,10,10,.55);
+  background: rgba(10,10,10,.04);
+}
+
+.copyTag.on{
+  border-color: var(--ink);
+  color: var(--bg);
+  background: var(--ink);
 }
 
 @media (max-width: 640px){
-  .wrap{ padding:18px 16px 18px; }
-  .topbar{ flex-direction:column; align-items:flex-start; }
+  .wrap{ padding:20px 16px 18px; }
+  .top{ flex-direction:column; align-items:flex-start; }
   .hero{ padding:14px 0 12px; }
   .card{ padding:16px; }
   .ctaRow{ flex-direction:column; align-items:stretch; }
   .trust{ flex-direction:column; gap:10px; }
   .commitStep{ padding:12px; }
-  .topmeta{ width:100%; text-align:left; }
 }
 ` as const;
