@@ -15,23 +15,57 @@ import {
   Clock,
   Target,
   Send,
+  Copy,
 } from "lucide-react";
 
 /**
- * QTMBG — Signal OS (Vercel-safe, strict TS)
- * Branding: Sometype Mono (head + body)
- * Layout fixes:
- * - True centered hero titles (start + result)
- * - No awkward “dead space” (full-height layout + footer anchor)
- * - SSR-safe localStorage hydration
+ * QTMBG — Signal OS (V4)
+ * Architecture upgraded from frame-by-frame reference:
+ * 1) Hook (start) → 2) Seriousness/consent → 3) Quest (progress + count)
+ * 4) Micro-reveal checkpoints → 5) Shareable result
+ *
+ * Styling:
+ * - Pure white background (no warm tint)
+ * - Notebook stripes (subtle)
+ * - Sometype Mono head+body
  */
-
-// ------------------------ CONFIG ------------------------
 
 type ForceId = "essence" | "identity" | "offer" | "system" | "growth";
 type StageId = "launch" | "reposition" | "scale";
 
-const STORAGE_KEY = "qtmbg-signal-os-v3";
+type Choice = 1 | 3 | 5;
+
+type Question = {
+  force: ForceId;
+  text: string;
+  a: { v: Choice; label: string };
+  b: { v: Choice; label: string };
+  c: { v: Choice; label: string };
+};
+
+type View = "start" | "consent" | "scan" | "aha" | "result" | "email";
+
+type State = {
+  stage: StageId;
+  view: View;
+  idx: number;
+  createdAtISO: string;
+
+  // responses aligned to QUESTIONS indices
+  responses: Array<Choice | null>;
+
+  // two checkpoint reveals (bitmask): 1=early shown, 2=mid shown
+  ahaMask: number;
+  ahaKind: "early" | "mid";
+
+  email: string;
+  name: string;
+  website: string;
+};
+
+const STORAGE_KEY = "qtmbg-signal-os-v4";
+
+// ------------------------ CONTENT ------------------------
 
 const FORCES: Array<{
   id: ForceId;
@@ -52,7 +86,7 @@ const STAGES: Array<{ id: StageId; label: string; sub: string }> = [
   { id: "scale", label: "Scaling", sub: "You need throughput, not more hustle" },
 ];
 
-// BENCHMARKS
+// BENCHMARKS (kept as you had)
 const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }>> = {
   essence: {
     launch: { avg: 42, top10: 73 },
@@ -81,17 +115,9 @@ const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }
   },
 };
 
-type Choice = 1 | 3 | 5;
-
-type Question = {
-  force: ForceId;
-  text: string;
-  a: { v: Choice; label: string };
-  b: { v: Choice; label: string };
-  c: { v: Choice; label: string };
-};
-
+// 12 questions (quest feels real, still fast)
 const QUESTIONS: Question[] = [
+  // ESSENCE (2)
   {
     force: "essence",
     text: "If I land on your brand today… can I understand the unique mechanism you bring?",
@@ -100,12 +126,30 @@ const QUESTIONS: Question[] = [
     c: { v: 5, label: "Yes — it's specific, named, and repeatable." },
   },
   {
+    force: "essence",
+    text: "Can a stranger describe you in one sentence without you being there to explain?",
+    a: { v: 1, label: "No — it depends on context, person, mood." },
+    b: { v: 3, label: "Sometimes — but it's not consistent." },
+    c: { v: 5, label: "Yes — they repeat the same simple line." },
+  },
+
+  // IDENTITY (2)
+  {
     force: "identity",
     text: "Do you look and sound like a premium authority in your space?",
     a: { v: 1, label: "Not yet — it feels template or inconsistent." },
     b: { v: 3, label: "Clean — but not memorable or high-status." },
     c: { v: 5, label: "Yes — instantly premium and distinct." },
   },
+  {
+    force: "identity",
+    text: "When people see your touchpoints, do they assume 'cheap' or 'serious money'?",
+    a: { v: 1, label: "They could easily shop me against cheaper options." },
+    b: { v: 3, label: "Mixed — depends on who it is." },
+    c: { v: 5, label: "They assume premium before price is even mentioned." },
+  },
+
+  // OFFER (2)
   {
     force: "offer",
     text: "Is your flagship offer obvious and easy to choose?",
@@ -114,6 +158,15 @@ const QUESTIONS: Question[] = [
     c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
   },
   {
+    force: "offer",
+    text: "Do prospects buy the next step… or do they ask for 'a call to figure it out'?",
+    a: { v: 1, label: "Mostly calls — lots of back-and-forth." },
+    b: { v: 3, label: "A mix — some buy, some need persuasion." },
+    c: { v: 5, label: "The next step is obvious and frictionless." },
+  },
+
+  // SYSTEM (3)
+  {
     force: "system",
     text: "Is lead flow predictable and controlled (not luck-based)?",
     a: { v: 1, label: "No — it's feast/famine and manual chasing." },
@@ -121,15 +174,45 @@ const QUESTIONS: Question[] = [
     c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
   },
   {
+    force: "system",
+    text: "Do you have one 'happy path' from attention → cash that you can explain in 10 seconds?",
+    a: { v: 1, label: "No — it's messy and changes constantly." },
+    b: { v: 3, label: "Somewhat — but it's not tight." },
+    c: { v: 5, label: "Yes — it's one clear path with one CTA." },
+  },
+  {
+    force: "system",
+    text: "If you stop posting for 14 days, does the pipeline keep breathing?",
+    a: { v: 1, label: "No — everything goes quiet." },
+    b: { v: 3, label: "Some — but it drops fast." },
+    c: { v: 5, label: "Yes — nurture + assets keep converting." },
+  },
+
+  // GROWTH (3)
+  {
     force: "growth",
     text: "Do you have a single metric and a plan that scales without chaos?",
     a: { v: 1, label: "No — I react to bank balance and urgency." },
     b: { v: 3, label: "Some — I track revenue, but not signal/quality." },
-    c: { v: 5, label: "Yes — clear north star + weekly execution loop." },
+    c: { v: 5, label: "Yes — clear north star + weekly loop." },
+  },
+  {
+    force: "growth",
+    text: "Is your calendar running you… or are you running the calendar?",
+    a: { v: 1, label: "It runs me — constant reactivity." },
+    b: { v: 3, label: "Mixed — some structure, still chaotic." },
+    c: { v: 5, label: "I have a repeatable rhythm and protect it." },
+  },
+  {
+    force: "growth",
+    text: "If you doubled demand tomorrow, would delivery break?",
+    a: { v: 1, label: "Yes — I'd drown." },
+    b: { v: 3, label: "Maybe — depends on the month." },
+    c: { v: 5, label: "No — the system and offer can absorb it." },
   },
 ];
 
-// MICRO-SYMPTOMS
+// MICRO-SYMPTOMS (kept)
 const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   essence: {
     launch: [
@@ -218,55 +301,7 @@ const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
   },
 };
 
-// CASE ANCHORS
-const CASE_ANCHORS: Record<
-  ForceId,
-  {
-    name: string;
-    role: string;
-    before: string;
-    after: string;
-    mechanic: string;
-  }
-> = {
-  essence: {
-    name: "Client A",
-    role: "Agency founder",
-    before: "'We do branding and strategy' + long calls to explain value",
-    after: "Named mechanism + shorter cycles + higher close rate",
-    mechanic: "Extract the IP hidden in delivery, name it, make it the offer.",
-  },
-  identity: {
-    name: "Client B",
-    role: "B2B consultant",
-    before: "Clean work, but looked generic → constant negotiation",
-    after: "Authority identity → 'clearly premium' perception",
-    mechanic: "Upgrade touchpoints to match expertise level, not comfort zone.",
-  },
-  offer: {
-    name: "Client C",
-    role: "Coaching business",
-    before: "Too many offers → decision paralysis",
-    after: "One obvious flagship path → faster buying",
-    mechanic: "Collapse options into one next step with constraints.",
-  },
-  system: {
-    name: "Client D",
-    role: "Service founder",
-    before: "Feast/famine, manual follow-up, unclear path",
-    after: "Repeatable pipeline + nurture loop",
-    mechanic: "Build a simple happy path with one filter at each stage.",
-  },
-  growth: {
-    name: "Client E",
-    role: "Founder",
-    before: "New tactics every week → reactive growth",
-    after: "One metric + weekly loop → predictable momentum",
-    mechanic: "Pick one lever for 90 days, ignore noise.",
-  },
-};
-
-// LEAK INTELLIGENCE
+// LEAK INTELLIGENCE (kept)
 type LeakInfo = {
   leakName: string;
   humanSymptom: string;
@@ -376,6 +411,8 @@ const LEAKS: Record<ForceId, LeakInfo> = {
   },
 };
 
+// ------------------------ UTILS ------------------------
+
 function clamp(n: number, min: number, max: number) {
   return Math.max(min, Math.min(max, n));
 }
@@ -386,38 +423,11 @@ function pctFromChoice(v: Choice) {
   return 100;
 }
 
-function sortForcesByWeakest(scores: Record<ForceId, number>) {
-  const pairs = (Object.keys(scores) as ForceId[]).map((k) => [k, scores[k]] as const);
-  return pairs.sort((a, b) => a[1] - b[1]);
+function bandLabel(pct: number) {
+  if (pct >= 80) return "STRONG";
+  if (pct >= 55) return "UNSTABLE";
+  return "CRITICAL";
 }
-
-// ------------------------ UI ------------------------
-
-type View = "start" | "scan" | "aha" | "result" | "email";
-
-type State = {
-  stage: StageId;
-  idx: number;
-  answers: Partial<Record<ForceId, Choice>>;
-  view: View;
-  createdAtISO: string;
-  ahaShown: boolean;
-  email: string;
-  name: string;
-  website: string;
-};
-
-const DEFAULT_STATE: State = {
-  stage: "launch",
-  idx: 0,
-  answers: {},
-  view: "start",
-  createdAtISO: new Date().toISOString(),
-  ahaShown: false,
-  email: "",
-  name: "",
-  website: "",
-};
 
 function loadStateSafe(): State | null {
   try {
@@ -439,13 +449,7 @@ function saveStateSafe(s: State) {
   }
 }
 
-function bandLabel(pct: number) {
-  if (pct >= 80) return "STRONG";
-  if (pct >= 55) return "UNSTABLE";
-  return "CRITICAL";
-}
-
-// ------------------------ TIMER LOGIC ------------------------
+// ------------------------ TIMER ------------------------
 
 function useDecayTimer(createdAt: string) {
   const [now, setNow] = useState(Date.now());
@@ -456,7 +460,7 @@ function useDecayTimer(createdAt: string) {
   }, []);
 
   const created = new Date(createdAt).getTime();
-  const expires = created + 48 * 60 * 60 * 1000; // 48 hours
+  const expires = created + 48 * 60 * 60 * 1000;
   const remaining = Math.max(0, expires - now);
 
   const hours = Math.floor(remaining / (60 * 60 * 1000));
@@ -466,7 +470,7 @@ function useDecayTimer(createdAt: string) {
   return { hours, mins, secs, expired: remaining === 0 };
 }
 
-// ------------------------ COMPONENTS ------------------------
+// ------------------------ UI ATOMS ------------------------
 
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -479,7 +483,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         <div className="footer">
           <span className="footerTag">QTMBG</span>
           <span className="muted">
-            Signal OS is a scan, not a full audit. Use it to convert insight into action.
+            Signal OS is a scan — not a full audit. Use it to convert insight into action.
           </span>
         </div>
       </div>
@@ -494,7 +498,7 @@ function HeaderMini() {
         <span className="brandBox">QUANTUM BRANDING</span>
         <span className="brandName">Signal OS</span>
       </div>
-      <div className="muted tiny">90 sec • 5 forces • primary leak</div>
+      <div className="muted tiny">~3 min • 12 questions • primary leak</div>
     </div>
   );
 }
@@ -527,32 +531,6 @@ function Btn({
       {children}
       <ArrowRight size={16} />
     </button>
-  );
-}
-
-function StagePicker({ value, onChange }: { value: StageId; onChange: (s: StageId) => void }) {
-  return (
-    <div className="field">
-      <div className="label">
-        Your situation <span className="req">*</span>
-      </div>
-      <div className="stageGrid">
-        {STAGES.map((s) => {
-          const active = value === s.id;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              className={`stage ${active ? "active" : ""}`}
-              onClick={() => onChange(s.id)}
-            >
-              <div className="stageTitle">{s.label}</div>
-              <div className="tiny muted">{s.sub}</div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
   );
 }
 
@@ -591,85 +569,198 @@ function DecayTimer({ createdAt }: { createdAt: string }) {
   );
 }
 
-// ------------------------ MAIN ------------------------
+function StagePicker({ value, onChange }: { value: StageId; onChange: (s: StageId) => void }) {
+  return (
+    <div className="field">
+      <div className="label">
+        Your situation <span className="req">*</span>
+      </div>
+      <div className="stageGrid">
+        {STAGES.map((s) => {
+          const active = value === s.id;
+          return (
+            <button
+              key={s.id}
+              type="button"
+              className={`stage ${active ? "active" : ""}`}
+              onClick={() => onChange(s.id)}
+            >
+              <div className="stageTitle">{s.label}</div>
+              <div className="tiny muted">{s.sub}</div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ------------------------ MAIN PAGE ------------------------
 
 export default function Page() {
+  const total = QUESTIONS.length;
+
+  const DEFAULT_STATE: State = {
+    stage: "launch",
+    view: "start",
+    idx: 0,
+    createdAtISO: new Date().toISOString(),
+    responses: Array.from({ length: total }, () => null),
+    ahaMask: 0,
+    ahaKind: "early",
+    email: "",
+    name: "",
+    website: "",
+  };
+
   const [state, setState] = useState<State>(DEFAULT_STATE);
 
-  // SSR-safe hydration (loads persisted state on client)
+  // hydrate from localStorage
   useEffect(() => {
     const loaded = loadStateSafe();
-    if (loaded) setState(loaded);
+    if (loaded && Array.isArray(loaded.responses) && loaded.responses.length === total) {
+      setState(loaded);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     saveStateSafe(state);
   }, [state]);
 
-  // scroll to top on view changes (keeps UX tight)
   useEffect(() => {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [state.view]);
+  }, [state.view, state.idx]);
 
-  const total = QUESTIONS.length;
+  const scoresAll = useMemo(() => {
+    const buckets: Record<ForceId, number[]> = {
+      essence: [],
+      identity: [],
+      offer: [],
+      system: [],
+      growth: [],
+    };
 
-  const scores = useMemo(() => {
-    const s: Record<ForceId, number> = {
+    for (let i = 0; i < QUESTIONS.length; i++) {
+      const q = QUESTIONS[i];
+      const r = state.responses[i];
+      if (r) buckets[q.force].push(pctFromChoice(r));
+    }
+
+    const out: Record<ForceId, number> = {
       essence: 0,
       identity: 0,
       offer: 0,
       system: 0,
       growth: 0,
     };
-    (Object.keys(s) as ForceId[]).forEach((f) => {
-      const v = state.answers[f];
-      s[f] = v ? pctFromChoice(v) : 0;
+
+    (Object.keys(out) as ForceId[]).forEach((f) => {
+      const arr = buckets[f];
+      if (!arr.length) out[f] = 0;
+      else out[f] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
     });
-    return s;
-  }, [state.answers]);
+
+    return out;
+  }, [state.responses]);
+
+  const scoresSoFar = useMemo(() => {
+    const buckets: Record<ForceId, number[]> = {
+      essence: [],
+      identity: [],
+      offer: [],
+      system: [],
+      growth: [],
+    };
+
+    for (let i = 0; i < state.idx; i++) {
+      const q = QUESTIONS[i];
+      const r = state.responses[i];
+      if (r) buckets[q.force].push(pctFromChoice(r));
+    }
+
+    const out: Record<ForceId, number> = {
+      essence: 0,
+      identity: 0,
+      offer: 0,
+      system: 0,
+      growth: 0,
+    };
+
+    (Object.keys(out) as ForceId[]).forEach((f) => {
+      const arr = buckets[f];
+      if (!arr.length) out[f] = 0;
+      else out[f] = Math.round(arr.reduce((a, b) => a + b, 0) / arr.length);
+    });
+
+    return out;
+  }, [state.responses, state.idx]);
 
   const diagnosis = useMemo(() => {
-    const sorted = sortForcesByWeakest(scores);
+    const pairs = (Object.keys(scoresAll) as ForceId[]).map((k) => [k, scoresAll[k]] as const);
+    const sorted = pairs.sort((a, b) => a[1] - b[1]);
     const primary = sorted[0]?.[0] ?? "essence";
     const secondary = sorted[1]?.[0] ?? "identity";
     return { primary, secondary };
-  }, [scores]);
+  }, [scoresAll]);
 
   const startScan = () => {
     setState((prev) => ({
       ...prev,
-      view: "scan",
+      view: "consent",
       idx: 0,
-      answers: {},
-      ahaShown: false,
+      responses: Array.from({ length: total }, () => null),
+      ahaMask: 0,
       createdAtISO: new Date().toISOString(),
     }));
   };
 
-  const pick = (force: ForceId, v: Choice) => {
+  const acceptConsent = () => {
+    setState((prev) => ({ ...prev, view: "scan", idx: 0 }));
+  };
+
+  const pick = (v: Choice) => {
     setState((prev) => {
-      const nextAnswers = { ...prev.answers, [force]: v };
+      const nextResponses = [...prev.responses];
+      nextResponses[prev.idx] = v;
+
       const nextIdx = prev.idx + 1;
 
-      if (nextIdx === 2 && !prev.ahaShown) {
-        return { ...prev, answers: nextAnswers, idx: nextIdx, view: "aha" };
-      }
-
-      if (nextIdx >= total) {
+      // Checkpoints like the reference quiz:
+      // Early checkpoint after Q3 (index becomes 3)
+      // Mid checkpoint after Q8 (index becomes 8)
+      if (nextIdx === 3 && (prev.ahaMask & 1) === 0) {
         return {
           ...prev,
-          answers: nextAnswers,
-          idx: total - 1,
-          view: "result",
+          responses: nextResponses,
+          idx: nextIdx,
+          view: "aha",
+          ahaKind: "early",
+        };
+      }
+      if (nextIdx === 8 && (prev.ahaMask & 2) === 0) {
+        return {
+          ...prev,
+          responses: nextResponses,
+          idx: nextIdx,
+          view: "aha",
+          ahaKind: "mid",
         };
       }
 
-      return { ...prev, answers: nextAnswers, idx: nextIdx };
+      if (nextIdx >= total) {
+        return { ...prev, responses: nextResponses, idx: total, view: "result" };
+      }
+
+      return { ...prev, responses: nextResponses, idx: nextIdx };
     });
   };
 
   const continueFromAha = () => {
-    setState((prev) => ({ ...prev, view: "scan", ahaShown: true }));
+    setState((prev) => {
+      const bit = prev.ahaKind === "early" ? 1 : 2;
+      return { ...prev, view: "scan", ahaMask: prev.ahaMask | bit };
+    });
   };
 
   const goBack = () => {
@@ -682,13 +773,16 @@ export default function Page() {
     } catch {
       // ignore
     }
-    setState({ ...DEFAULT_STATE, createdAtISO: new Date().toISOString() });
+    setState({
+      ...DEFAULT_STATE,
+      createdAtISO: new Date().toISOString(),
+      responses: Array.from({ length: total }, () => null),
+    });
   };
 
   const toEmail = () => setState((prev) => ({ ...prev, view: "email" }));
 
   const submitEmail = () => {
-    // hook to your backend later
     console.log("Email capture:", { email: state.email, name: state.name, website: state.website });
     alert(`Thanks ${state.name || "there"}! You'll get the breakdown by email.`);
     setState((prev) => ({ ...prev, view: "result" }));
@@ -700,7 +794,7 @@ export default function Page() {
       stage: state.stage,
       primary: diagnosis.primary,
       secondary: diagnosis.secondary,
-      scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(","),
+      scores: (Object.keys(scoresAll) as ForceId[]).map((k) => `${k}-${scoresAll[k]}`).join(","),
       ...(state.name && { name: state.name }),
       ...(state.email && { email: state.email }),
       ...(state.website && { website: state.website }),
@@ -708,6 +802,28 @@ export default function Page() {
 
     if (typeof window !== "undefined") {
       window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
+    }
+  };
+
+  const copySummary = async () => {
+    const { primary } = diagnosis;
+    const primaryInfo = LEAKS[primary];
+    const text =
+      `QTMBG — Signal OS\n` +
+      `Stage: ${state.stage}\n` +
+      `Primary leak: ${primaryInfo.leakName}\n` +
+      `${primaryInfo.humanSymptom}\n\n` +
+      `Today move: ${primaryInfo.todayMove}\n`;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        alert("Copied.");
+      } else {
+        alert("Copy not supported on this device.");
+      }
+    } catch {
+      alert("Copy failed.");
     }
   };
 
@@ -722,7 +838,9 @@ export default function Page() {
           <div className="kicker center">SIGNAL SCAN</div>
           <div className="h1 center">Find the one thing weakening your brand right now.</div>
           <div className="sub center">
-            90 seconds. 5 questions. You get your primary leak and the next move.
+            Takes ~3 minutes. 12 questions.
+            <br />
+            You get your primary leak + the next move.
             <br />
             <b>No email required to see results.</b>
           </div>
@@ -740,7 +858,7 @@ export default function Page() {
           <div className="trust">
             <div className="trustItem">
               <CheckCircle2 size={14} />
-              <span>Value first</span>
+              <span>Fast + decisive</span>
             </div>
             <div className="trustItem">
               <CheckCircle2 size={14} />
@@ -756,9 +874,64 @@ export default function Page() {
     );
   }
 
+  if (state.view === "consent") {
+    return (
+      <AppShell>
+        <HeaderMini />
+
+        <div className="hero">
+          <div className="kicker center">BEFORE YOU START</div>
+          <div className="h1 center">This is a scan. Not a diagnosis.</div>
+          <div className="sub center">
+            Signal OS gives you a directionally accurate read on where your brand leaks.
+            <br />
+            It does not replace a full audit or strategic work.
+          </div>
+        </div>
+
+        <Card className="consent">
+          <div className="consentGrid">
+            <div className="consentItem">
+              <div className="consentTitle">What you get</div>
+              <ul className="list">
+                <li>Your primary leak (the first thing to fix).</li>
+                <li>One “today move” and a 7-day micro-plan.</li>
+                <li>A score snapshot across the 5 forces.</li>
+              </ul>
+            </div>
+
+            <div className="consentItem">
+              <div className="consentTitle">How it works</div>
+              <ul className="list">
+                <li>Tap answers. No writing. No friction.</li>
+                <li>Your results show instantly.</li>
+                <li>Email is optional (only to save/export).</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="ctaRow">
+            <Btn variant="primary" onClick={acceptConsent} icon={<Target size={16} />}>
+              Continue
+            </Btn>
+            <button className="link" type="button" onClick={restart}>
+              Reset
+            </button>
+          </div>
+
+          <div className="tiny muted">
+            You can retake anytime. Results expire after 48 hours to keep you in action.
+          </div>
+        </Card>
+      </AppShell>
+    );
+  }
+
   if (state.view === "aha") {
-    const sortedSoFar = sortForcesByWeakest(scores);
-    const emerging = sortedSoFar[0]?.[0] ?? "essence";
+    // compute weakest force so far (based on answered questions only)
+    const pairs = (Object.keys(scoresSoFar) as ForceId[]).map((k) => [k, scoresSoFar[k]] as const);
+    const sorted = pairs.sort((a, b) => a[1] - b[1]);
+    const emerging = sorted[0]?.[0] ?? "essence";
     const emergingMeta = FORCES.find((f) => f.id === emerging)!;
     const EmergingIcon = emergingMeta.icon;
 
@@ -771,10 +944,12 @@ export default function Page() {
             <Target size={32} />
           </div>
 
-          <div className="ahaTitle">Pattern detected.</div>
+          <div className="ahaTitle">
+            {state.ahaKind === "early" ? "Pattern emerging." : "Signal is clarifying."}
+          </div>
 
           <div className="ahaText">
-            Based on your first answers, I’m seeing a potential leak in your{" "}
+            Based on what you’ve answered so far, your most likely leak is in{" "}
             <strong>{emergingMeta.label}</strong>.
           </div>
 
@@ -788,22 +963,22 @@ export default function Page() {
 
           <div className="ahaHint">
             {emerging === "essence" &&
-              "This usually means your mechanism isn’t named or sharp enough to create instant trust."}
+              "This usually means your mechanism is not named clearly enough for instant trust."}
             {emerging === "identity" &&
-              "This usually means your identity isn’t matching the level you want to charge."}
+              "This usually means your status signal doesn’t match the level you want to charge."}
             {emerging === "offer" &&
-              "This usually means you don’t have one obvious flagship path — too many options create paralysis."}
+              "This usually means there is no single obvious flagship next step."}
             {emerging === "system" &&
-              "This usually means lead flow is unpredictable — more feast/famine than controlled pipeline."}
+              "This usually means leads are inconsistent because the path leaks."}
             {emerging === "growth" &&
-              "This usually means you’re reacting to urgency instead of tracking the right metric."}
+              "This usually means you don’t have one metric + rhythm anchoring decisions."}
           </div>
 
           <div className="ahaQuestion">Sound familiar?</div>
 
           <div className="ctaRow">
             <Btn variant="primary" onClick={continueFromAha}>
-              Yes — confirm it
+              Yes — keep going
             </Btn>
             <Btn variant="secondary" onClick={continueFromAha}>
               Not sure — keep going
@@ -811,7 +986,7 @@ export default function Page() {
           </div>
 
           <div className="tiny muted">
-            This is pattern recognition. The next questions confirm or refine the diagnosis.
+            This is a checkpoint reveal (like a real diagnostic). Next questions confirm or correct it.
           </div>
         </Card>
       </AppShell>
@@ -819,7 +994,8 @@ export default function Page() {
   }
 
   if (state.view === "scan") {
-    const q = QUESTIONS[state.idx];
+    const safeIdx = clamp(state.idx, 0, total - 1);
+    const q = QUESTIONS[safeIdx];
     const forceMeta = FORCES.find((f) => f.id === q.force)!;
     const Icon = forceMeta.icon;
 
@@ -830,7 +1006,7 @@ export default function Page() {
         <div className="scanHead">
           <div className="scanLeft">
             <div className="kicker">
-              Question {state.idx + 1} / {total}
+              Question {safeIdx + 1} / {total}
             </div>
             <div className="forceLine">
               <Icon size={18} />
@@ -840,20 +1016,21 @@ export default function Page() {
               </div>
             </div>
           </div>
+
           <div className="scanRight">
-            <button className="link" type="button" onClick={goBack} disabled={state.idx === 0}>
+            <button className="link" type="button" onClick={goBack} disabled={safeIdx === 0}>
               Back
             </button>
           </div>
         </div>
 
-        <ProgressBar current={state.idx + 1} total={total} />
+        <ProgressBar current={safeIdx + 1} total={total} />
 
         <Card>
           <div className="qText">{q.text}</div>
 
           <div className="choices">
-            <button className="choice" type="button" onClick={() => pick(q.force, q.a.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.a.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -861,7 +1038,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q.force, q.b.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.b.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -869,7 +1046,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q.force, q.c.v)}>
+            <button className="choice" type="button" onClick={() => pick(q.c.v)}>
               <div className="choiceDot">
                 <CheckCircle2 size={14} />
               </div>
@@ -945,28 +1122,29 @@ export default function Page() {
             >
               Email me the breakdown
             </Btn>
+
             <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: "result" }))}>
               Skip
             </button>
           </div>
 
-          <div className="tiny muted">
-            No spam. One useful email with your analysis.
-          </div>
+          <div className="tiny muted">No spam. One useful email with your analysis.</div>
         </Card>
       </AppShell>
     );
   }
 
-  // RESULT
+  // RESULT VIEW
   const primary = diagnosis.primary;
   const secondary = diagnosis.secondary;
+
   const primaryInfo = LEAKS[primary];
   const primaryMeta = FORCES.find((f) => f.id === primary)!;
-  const caseAnchor = CASE_ANCHORS[primary];
+
   const symptoms = MICRO_SYMPTOMS[primary][state.stage];
   const benchmark = BENCHMARKS[primary][state.stage];
-  const primaryScore = scores[primary];
+
+  const primaryScore = scoresAll[primary];
   const gap = benchmark.avg - primaryScore;
   const topGap = benchmark.top10 - primaryScore;
 
@@ -976,11 +1154,36 @@ export default function Page() {
 
       <DecayTimer createdAt={state.createdAtISO} />
 
-      <div className="hero">
-        <div className="kicker center">YOUR PRIMARY LEAK</div>
-        <div className="h1 leak center">{primaryInfo.leakName}</div>
-        <div className="sub center">{primaryInfo.humanSymptom}</div>
-      </div>
+      {/* Shareable hero card */}
+      <Card className="shareCard">
+        <div className="shareTop">
+          <div>
+            <div className="kicker">YOUR PRIMARY LEAK</div>
+            <div className="h2">{primaryInfo.leakName}</div>
+            <div className="shareSub">{primaryInfo.humanSymptom}</div>
+          </div>
+
+          <button className="copyBtn" type="button" onClick={copySummary} title="Copy summary">
+            <Copy size={16} />
+            Copy
+          </button>
+        </div>
+
+        <div className="shareMeta">
+          <div className="metaPill">
+            <span className="metaLabel">STAGE</span>
+            <span className="metaValue">{state.stage.toUpperCase()}</span>
+          </div>
+          <div className="metaPill">
+            <span className="metaLabel">WEAKEST FORCE</span>
+            <span className="metaValue">{primaryMeta.label}</span>
+          </div>
+          <div className="metaPill">
+            <span className="metaLabel">SCORE</span>
+            <span className="metaValue">{primaryScore}</span>
+          </div>
+        </div>
+      </Card>
 
       <Card className="symptoms">
         <div className="symptomsTitle">If this is true, you’ll recognize these:</div>
@@ -1025,6 +1228,7 @@ export default function Page() {
                 <span className="benchValue">{benchmark.top10}</span>
               </div>
             </div>
+
             <div className="panelText small">
               You are <strong>{Math.abs(gap)} points</strong> {gap < 0 ? "above" : "below"} average and{" "}
               <strong>{Math.abs(topGap)} points</strong> from premium positioning.
@@ -1043,34 +1247,16 @@ export default function Page() {
 
             <div className="panelTitle mt">Important</div>
             <div className="panelText small">
-              This is a signal scan, not a full audit. It tells you where you leak. The Audit is where we build decisions + assets you can execute.
+              Signal tells you where you leak. The Audit is where we build decisions + assets you can execute.
             </div>
           </div>
 
           <div className="panel soft">
-            <div className="caseAnchor">
-              <div className="caseTitle">What fixing it looks like:</div>
-              <div className="caseName">
-                {caseAnchor.name} — {caseAnchor.role}
-              </div>
-              <div className="caseRow">
-                <span className="caseLabel">Before:</span>
-                <span className="caseValue">{caseAnchor.before}</span>
-              </div>
-              <div className="caseRow">
-                <span className="caseLabel">After:</span>
-                <span className="caseValue highlight">{caseAnchor.after}</span>
-              </div>
-              <div className="caseMechanic">{caseAnchor.mechanic}</div>
-            </div>
-
-            <div className="divider" />
-
             <div className="panelTitle">Signal snapshot</div>
             <div className="bars">
-              {(Object.keys(scores) as ForceId[]).map((f) => {
+              {(Object.keys(scoresAll) as ForceId[]).map((f) => {
                 const meta = FORCES.find((x) => x.id === f)!;
-                const pct = scores[f];
+                const pct = scoresAll[f];
                 const isPrimary = f === primary;
                 const isSecondary = f === secondary;
                 const tag = isPrimary ? "PRIMARY LEAK" : isSecondary ? "SECONDARY" : bandLabel(pct);
@@ -1112,17 +1298,6 @@ export default function Page() {
                   <TrendingUp size={18} />
                 </div>
                 <div className="commitContent">
-                  <div className="commitTitle">Book a 15-min leak review</div>
-                  <div className="commitSub">Free • Confirm the leak on your site</div>
-                </div>
-                <ChevronRight size={18} />
-              </button>
-
-              <button className="commitStep primary" type="button" onClick={toAudit}>
-                <div className="commitIcon">
-                  <Zap size={18} />
-                </div>
-                <div className="commitContent">
                   <div className="commitTitle">Run the full Brand Audit</div>
                   <div className="commitSub">Diagnosis + fix plan + implementation</div>
                 </div>
@@ -1150,12 +1325,12 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Sometype+Mono:wght@400;500;600;700&display=swap');
 
 :root{
-  --bg: #f6f1e8;
+  --bg: #ffffff;          /* pure white */
   --paper: #ffffff;
   --ink: #0a0a0a;
   --muted: #6f6f6f;
-  --rule: rgba(10,10,10,.55);
-  --rule2: rgba(10,10,10,.18);
+  --line: rgba(10,10,10,.06);   /* notebook ruled lines */
+  --margin: rgba(10,10,10,.10); /* margin line */
 }
 
 *{margin:0;padding:0;box-sizing:border-box;}
@@ -1167,11 +1342,23 @@ const CSS = `
   font-family: 'Sometype Mono', ui-monospace, monospace;
   line-height:1.55;
   display:flex;
-  /* subtle QTMBG grid */
+
+  /* notebook stripes */
   background-image:
-    linear-gradient(to right, var(--rule2) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--rule2) 1px, transparent 1px);
-  background-size: 48px 48px;
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 28px,
+      var(--line) 29px
+    ),
+    linear-gradient(
+      to right,
+      transparent 0px,
+      transparent 84px,
+      var(--margin) 84px,
+      var(--margin) 86px,
+      transparent 86px
+    );
 }
 
 .wrap{
@@ -1210,7 +1397,7 @@ const CSS = `
   text-transform:uppercase;
   font-weight:700;
   background: var(--ink);
-  color: var(--bg);
+  color: #ffffff;
 }
 
 .brandName{
@@ -1248,13 +1435,11 @@ const CSS = `
   font-weight: 700;
 }
 
-.h1.leak{
-  border:2px solid var(--ink);
-  display:inline-block;
-  padding:14px 18px;
-  margin-top:6px;
-  background: var(--ink);
-  color: var(--bg);
+.h2{
+  font-size: clamp(26px, 3.2vw, 44px);
+  line-height: 1.06;
+  letter-spacing: -0.02em;
+  font-weight: 800;
 }
 
 .sub{
@@ -1276,12 +1461,10 @@ const CSS = `
   margin-bottom:16px;
 }
 
-.card.aha{
-  background: var(--paper);
-}
+.card.aha{ background: var(--paper); }
 
 .card.symptoms{
-  background: rgba(255,255,255,.8);
+  background: rgba(255,255,255,.92);
 }
 
 .grid2{
@@ -1341,10 +1524,10 @@ const CSS = `
 
 .stage.active{
   background: var(--ink);
-  color: var(--bg);
+  color: #ffffff;
 }
 
-.stage.active .muted{ color: rgba(246,241,232,.75); }
+.stage.active .muted{ color: rgba(255,255,255,.75); }
 
 .stageTitle{
   font-weight:700;
@@ -1369,7 +1552,7 @@ const CSS = `
 
 .btn.primary{
   background: var(--ink);
-  color: var(--bg);
+  color: #ffffff;
 }
 
 .btn.primary:hover{ transform: translateY(-2px); }
@@ -1508,7 +1691,7 @@ const CSS = `
   align-items:center;
   gap:10px;
   padding:12px 14px;
-  background: rgba(255,255,255,.9);
+  background: rgba(255,255,255,.96);
   border:2px solid var(--ink);
   margin-bottom:14px;
   font-size:12px;
@@ -1517,11 +1700,11 @@ const CSS = `
 
 .timer.expired{
   background: var(--ink);
-  color: var(--bg);
+  color: #ffffff;
 }
 
-.timer strong{ color: var(--ink); font-weight:700; }
-.timer.expired strong{ color: var(--bg); }
+.timer strong{ color: var(--ink); font-weight:800; }
+.timer.expired strong{ color: #ffffff; }
 
 .ahaIcon{
   margin:0 auto 18px;
@@ -1535,7 +1718,7 @@ const CSS = `
 
 .ahaTitle{
   font-size:28px;
-  font-weight:700;
+  font-weight:800;
   margin-bottom:14px;
 }
 
@@ -1559,10 +1742,7 @@ const CSS = `
   margin-bottom:16px;
 }
 
-.ahaForceName{
-  font-weight:700;
-  letter-spacing:.12em;
-}
+.ahaForceName{ font-weight:800; letter-spacing:.12em; }
 
 .ahaHint{
   font-size:14px;
@@ -1576,7 +1756,7 @@ const CSS = `
 
 .ahaQuestion{
   font-size:18px;
-  font-weight:600;
+  font-weight:700;
   margin:18px 0 16px;
 }
 
@@ -1585,7 +1765,7 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   color: rgba(10,10,10,.68);
-  font-weight:700;
+  font-weight:800;
   margin-bottom:14px;
 }
 
@@ -1623,7 +1803,7 @@ const CSS = `
 }
 
 .panel.soft{
-  background: rgba(255,255,255,.85);
+  background: rgba(255,255,255,.92);
 }
 
 .panelTitle{
@@ -1631,7 +1811,7 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   color: rgba(10,10,10,.65);
-  font-weight:700;
+  font-weight:800;
   margin-bottom:10px;
 }
 
@@ -1642,7 +1822,7 @@ const CSS = `
 }
 
 .panelText.strong{
-  font-weight:700;
+  font-weight:800;
   color: var(--ink);
   font-size:15px;
 }
@@ -1663,7 +1843,7 @@ const CSS = `
   flex-direction:column;
   gap:10px;
   padding:14px;
-  background: rgba(255,255,255,.7);
+  background: rgba(255,255,255,.85);
   border:2px solid rgba(10,10,10,.25);
   margin-bottom:12px;
 }
@@ -1676,13 +1856,13 @@ const CSS = `
 }
 
 .benchRow.strong{
-  font-weight:700;
+  font-weight:800;
   padding-top:8px;
   border-top:1px solid rgba(10,10,10,.2);
 }
 
 .benchLabel{ color: rgba(10,10,10,.62); }
-.benchValue{ font-weight:700; font-size:16px; color: var(--ink); }
+.benchValue{ font-weight:800; font-size:16px; color: var(--ink); }
 
 .outcomes{
   margin-top:18px;
@@ -1694,7 +1874,7 @@ const CSS = `
 .outcome{
   padding:14px;
   border:2px solid rgba(10,10,10,.35);
-  background: rgba(255,255,255,.8);
+  background: rgba(255,255,255,.90);
 }
 
 .outcomeLabel{
@@ -1702,7 +1882,7 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   margin-bottom:8px;
-  font-weight:700;
+  font-weight:800;
   color: rgba(10,10,10,.65);
 }
 
@@ -1710,61 +1890,6 @@ const CSS = `
   font-size:13px;
   line-height:1.55;
   color: rgba(10,10,10,.78);
-}
-
-.caseAnchor{
-  padding:16px;
-  background: rgba(255,255,255,.9);
-  border:2px solid rgba(10,10,10,.35);
-  margin-bottom:16px;
-}
-
-.caseTitle{
-  font-size:11px;
-  letter-spacing:.18em;
-  text-transform:uppercase;
-  color: rgba(10,10,10,.65);
-  margin-bottom:12px;
-  font-weight:700;
-}
-
-.caseName{
-  font-size:14px;
-  font-weight:700;
-  color: var(--ink);
-  margin-bottom:10px;
-}
-
-.caseRow{
-  display:flex;
-  gap:10px;
-  margin-bottom:8px;
-  font-size:13px;
-  line-height:1.55;
-}
-
-.caseLabel{
-  color: rgba(10,10,10,.62);
-  font-weight:700;
-  min-width:60px;
-}
-
-.caseValue{ color: rgba(10,10,10,.78); flex:1; }
-.caseValue.highlight{ color: var(--ink); font-weight:700; }
-
-.caseMechanic{
-  margin-top:10px;
-  padding-top:10px;
-  border-top:1px solid rgba(10,10,10,.2);
-  font-size:13px;
-  line-height:1.55;
-  color: rgba(10,10,10,.65);
-}
-
-.divider{
-  height:2px;
-  background: rgba(10,10,10,.2);
-  margin:16px 0;
 }
 
 .bars{
@@ -1784,7 +1909,7 @@ const CSS = `
 .barName{
   font-size:12px;
   letter-spacing:.14em;
-  font-weight:700;
+  font-weight:800;
   color: var(--ink);
 }
 
@@ -1793,11 +1918,11 @@ const CSS = `
   letter-spacing:.2em;
   text-transform:uppercase;
   color: rgba(10,10,10,.45);
-  font-weight:700;
+  font-weight:800;
 }
 
 .tagHard{
-  color: var(--bg);
+  color: #ffffff;
   background: var(--ink);
   padding:4px 8px;
   border:2px solid var(--ink);
@@ -1814,7 +1939,7 @@ const CSS = `
   position:relative;
   border:2px solid var(--ink);
   height: 26px;
-  background: rgba(255,255,255,.9);
+  background: rgba(255,255,255,.95);
   overflow:hidden;
 }
 
@@ -1830,8 +1955,8 @@ const CSS = `
   top:50%;
   transform: translateY(-50%);
   font-size:12px;
-  color: var(--bg);
-  font-weight:700;
+  color: #ffffff;
+  font-weight:800;
   mix-blend-mode: difference;
 }
 
@@ -1848,7 +1973,7 @@ const CSS = `
   gap:14px;
   padding:14px;
   border:2px solid rgba(10,10,10,.35);
-  background: rgba(255,255,255,.9);
+  background: rgba(255,255,255,.95);
   cursor:pointer;
   transition: all .18s cubic-bezier(.4,0,.2,1);
   text-align:left;
@@ -1858,12 +1983,6 @@ const CSS = `
 .commitStep:hover{
   transform: translateY(-2px);
   border-color: var(--ink);
-}
-
-.commitStep.primary{
-  border-color: var(--ink);
-  background: var(--ink);
-  color: var(--bg);
 }
 
 .commitIcon{
@@ -1877,9 +1996,8 @@ const CSS = `
 }
 
 .commitContent{ flex:1; }
-.commitTitle{ font-weight:700; font-size:14px; margin-bottom:4px; }
+.commitTitle{ font-weight:800; font-size:14px; margin-bottom:4px; }
 .commitSub{ font-size:11px; color: rgba(10,10,10,.55); }
-.commitStep.primary .commitSub{ color: rgba(246,241,232,.75); }
 
 .footer{
   margin-top: 18px;
@@ -1896,11 +2014,92 @@ const CSS = `
   font-size:10px;
   letter-spacing:.22em;
   text-transform:uppercase;
-  font-weight:700;
+  font-weight:800;
   background: var(--ink);
-  color: var(--bg);
+  color: #ffffff;
 }
 
+/* Consent layout */
+.consentGrid{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:18px;
+  margin-bottom: 10px;
+}
+@media (max-width: 780px){
+  .consentGrid{ grid-template-columns: 1fr; }
+}
+.consentTitle{
+  font-size:11px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color: rgba(10,10,10,.65);
+  font-weight:800;
+  margin-bottom:10px;
+}
+
+/* Shareable card */
+.shareCard{
+  background: #ffffff;
+}
+.shareTop{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:16px;
+}
+.shareSub{
+  margin-top:10px;
+  font-size:14px;
+  line-height:1.6;
+  color: rgba(10,10,10,.75);
+  max-width: 760px;
+}
+.copyBtn{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  border:2px solid var(--ink);
+  padding:10px 12px;
+  background:#fff;
+  cursor:pointer;
+  font-family: 'Sometype Mono', ui-monospace, monospace;
+  font-size:11px;
+  letter-spacing:.18em;
+  text-transform:uppercase;
+  font-weight:800;
+  transition: all .18s cubic-bezier(.4,0,.2,1);
+}
+.copyBtn:hover{ transform: translateY(-2px); }
+
+.shareMeta{
+  margin-top:14px;
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+.metaPill{
+  border:2px solid rgba(10,10,10,.35);
+  padding:10px 12px;
+  background: rgba(255,255,255,.95);
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.metaLabel{
+  font-size:10px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color: rgba(10,10,10,.55);
+  font-weight:800;
+}
+.metaValue{
+  font-size:12px;
+  font-weight:800;
+  color: var(--ink);
+}
+
+/* Mobile tweaks */
 @media (max-width: 640px){
   .wrap{ padding:20px 16px 18px; }
   .top{ flex-direction:column; align-items:flex-start; }
@@ -1908,6 +2107,17 @@ const CSS = `
   .card{ padding:16px; }
   .ctaRow{ flex-direction:column; align-items:stretch; }
   .trust{ flex-direction:column; gap:10px; }
-  .commitStep{ padding:12px; }
+  .shareTop{ flex-direction:column; }
+  .copyBtn{ width: 100%; justify-content:center; }
+  /* remove margin line on very small screens */
+  .qbg{
+    background-image:
+      repeating-linear-gradient(
+        to bottom,
+        transparent 0px,
+        transparent 26px,
+        var(--line) 27px
+      );
+  }
 }
 ` as const;
