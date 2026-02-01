@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowRight,
   CheckCircle2,
@@ -15,27 +15,32 @@ import {
   Clock,
   Target,
   Send,
-} from "lucide-react";
+  Sparkles,
+} from 'lucide-react';
 
 /**
- * QTMBG — Signal OS (Revised v4)
- * Goal: coherent with Audit look/feel + stronger “hook loop” architecture.
- * - White notebook background (grid + ruled lines + red margin)
- * - True centered hero
- * - 12 questions (multi-question per force) with averaged scoring
- * - Ritual onboarding screen (sets depth + legitimacy)
- * - Progress indicator 1/12
- * - Clean, truthful CTAs (Validate in Audit + Export)
- * - Vercel-safe, strict TS, localStorage hydration
+ * QTMBG — Signal OS (v4)
+ * Goal: Liven-like funnel mechanics (personalization → welcome container → quiz → pattern checkpoints → richer result)
+ * - True white notebook paper (no beige)
+ * - Striped notebook background
+ * - Coherent spacing/borders/typography across all views
+ * - 12 questions (~4 min)
+ * - Email optional (only for export later)
+ * - Primary CTA: Book call
  */
 
-// ------------------------ CONFIG ------------------------
+type ForceId = 'essence' | 'identity' | 'offer' | 'system' | 'growth';
+type StageId = 'launch' | 'reposition' | 'scale';
 
-type ForceId = "essence" | "identity" | "offer" | "system" | "growth";
-type StageId = "launch" | "reposition" | "scale";
-type Choice = 1 | 3 | 5;
+type SymptomId =
+  | 'not_enough_leads'
+  | 'low_conversion'
+  | 'price_pushback'
+  | 'unclear_positioning'
+  | 'inconsistent_content'
+  | 'chaos_delivery';
 
-const STORAGE_KEY = "qtmbg-signal-os-v4";
+const STORAGE_KEY = 'qtmbg-signal-os-v4';
 
 const FORCES: Array<{
   id: ForceId;
@@ -43,50 +48,31 @@ const FORCES: Array<{
   icon: React.ComponentType<{ size?: number }>;
   micro: string;
 }> = [
-  { id: "essence", label: "ESSENCE", icon: Zap, micro: "What you really stand for" },
-  { id: "identity", label: "IDENTITY", icon: ShieldAlert, micro: "How you are perceived" },
-  { id: "offer", label: "OFFER", icon: Layers, micro: "What people buy and why" },
-  { id: "system", label: "SYSTEM", icon: Cpu, micro: "How leads become cash" },
-  { id: "growth", label: "GROWTH", icon: Activity, micro: "How it scales without chaos" },
+  { id: 'essence', label: 'ESSENCE', icon: Zap, micro: 'What you really stand for' },
+  { id: 'identity', label: 'IDENTITY', icon: ShieldAlert, micro: 'How you are perceived' },
+  { id: 'offer', label: 'OFFER', icon: Layers, micro: 'What people buy and why' },
+  { id: 'system', label: 'SYSTEM', icon: Cpu, micro: 'How leads become cash' },
+  { id: 'growth', label: 'GROWTH', icon: Activity, micro: 'How it scales without chaos' },
 ];
 
 const STAGES: Array<{ id: StageId; label: string; sub: string }> = [
-  { id: "launch", label: "Launching", sub: "Building first demand + first offers" },
-  { id: "reposition", label: "Repositioning", sub: "Good product, unclear signal or audience" },
-  { id: "scale", label: "Scaling", sub: "You need throughput, not more hustle" },
+  { id: 'launch', label: 'Launching', sub: 'Building first demand + first offers' },
+  { id: 'reposition', label: 'Repositioning', sub: 'Good product, unclear signal or audience' },
+  { id: 'scale', label: 'Scaling', sub: 'You need throughput, not more hustle' },
 ];
 
-// BENCHMARKS (keep light: scan-level)
-const BENCHMARKS: Record<ForceId, Record<StageId, { avg: number; top10: number }>> = {
-  essence: {
-    launch: { avg: 42, top10: 73 },
-    reposition: { avg: 51, top10: 81 },
-    scale: { avg: 67, top10: 87 },
-  },
-  identity: {
-    launch: { avg: 38, top10: 70 },
-    reposition: { avg: 48, top10: 78 },
-    scale: { avg: 64, top10: 85 },
-  },
-  offer: {
-    launch: { avg: 45, top10: 75 },
-    reposition: { avg: 54, top10: 82 },
-    scale: { avg: 70, top10: 88 },
-  },
-  system: {
-    launch: { avg: 35, top10: 68 },
-    reposition: { avg: 46, top10: 76 },
-    scale: { avg: 62, top10: 84 },
-  },
-  growth: {
-    launch: { avg: 40, top10: 72 },
-    reposition: { avg: 50, top10: 80 },
-    scale: { avg: 66, top10: 86 },
-  },
-};
+const SYMPTOMS: Array<{ id: SymptomId; label: string; sub: string }> = [
+  { id: 'not_enough_leads', label: 'Not enough leads', sub: 'Attention exists, volume doesn’t.' },
+  { id: 'low_conversion', label: 'Low conversion', sub: 'People visit, hesitate, don’t commit.' },
+  { id: 'price_pushback', label: 'Price pushback', sub: 'Negotiation / “too expensive” / delays.' },
+  { id: 'unclear_positioning', label: 'Unclear positioning', sub: 'Hard to explain what makes you different.' },
+  { id: 'inconsistent_content', label: 'Inconsistent content', sub: 'You post, but it doesn’t compound.' },
+  { id: 'chaos_delivery', label: 'Delivery chaos', sub: 'Fulfillment drains you / no repeatable machine.' },
+];
+
+type Choice = 1 | 3 | 5;
 
 type Question = {
-  id: string;
   force: ForceId;
   text: string;
   a: { v: Choice; label: string };
@@ -94,311 +80,188 @@ type Question = {
   c: { v: Choice; label: string };
 };
 
-// 12 questions: (3 ESSENCE, 2 IDENTITY, 2 OFFER, 3 SYSTEM, 2 GROWTH)
+// 12 questions (3 per “phase” feel) — still fast taps
 const QUESTIONS: Question[] = [
-  // ESSENCE (3)
+  // ESSENCE (2)
   {
-    id: "E1",
-    force: "essence",
-    text: "If I land on your brand today… can I name the mechanism you bring (not just the category)?",
-    a: { v: 1, label: "No — it reads like generic services." },
-    b: { v: 3, label: "Somewhat — but it isn’t named or sharp." },
-    c: { v: 5, label: "Yes — specific, named, and repeatable." },
+    force: 'essence',
+    text: 'If I land on your brand today… can I understand the unique mechanism you bring?',
+    a: { v: 1, label: 'No — it sounds like generic services.' },
+    b: { v: 3, label: "Somewhat — but it isn't named or sharp." },
+    c: { v: 5, label: "Yes — it's specific, named, repeatable." },
   },
   {
-    id: "E2",
-    force: "essence",
-    text: "Do you clearly repel the wrong buyer (so the right buyer feels seen)?",
-    a: { v: 1, label: "No — I try to appeal to everyone." },
-    b: { v: 3, label: "A bit — but boundaries are soft." },
-    c: { v: 5, label: "Yes — strong stance + clear fit criteria." },
-  },
-  {
-    id: "E3",
-    force: "essence",
-    text: "Can a client explain your value in one sentence without you present?",
-    a: { v: 1, label: "No — they describe me differently each time." },
-    b: { v: 3, label: "Sometimes — but it’s not consistent." },
-    c: { v: 5, label: "Yes — they repeat the same line." },
+    force: 'essence',
+    text: 'Do you have a clear point of view (a belief you’re known for)?',
+    a: { v: 1, label: 'No — I avoid strong claims.' },
+    b: { v: 3, label: 'Sometimes — but it isn’t consistent.' },
+    c: { v: 5, label: 'Yes — people can repeat it for me.' },
   },
 
   // IDENTITY (2)
   {
-    id: "I1",
-    force: "identity",
-    text: "Do you look and sound like a premium authority in your space?",
-    a: { v: 1, label: "Not yet — template or inconsistent." },
-    b: { v: 3, label: "Clean — but not memorable or high-status." },
-    c: { v: 5, label: "Yes — instantly premium and distinct." },
+    force: 'identity',
+    text: 'Do you look and sound like a premium authority in your space?',
+    a: { v: 1, label: 'Not yet — template or inconsistent.' },
+    b: { v: 3, label: 'Clean — but not high-status or memorable.' },
+    c: { v: 5, label: 'Yes — instantly premium and distinct.' },
   },
   {
-    id: "I2",
-    force: "identity",
-    text: "Do you have a proof stack that makes your price feel obvious?",
-    a: { v: 1, label: "No — mostly claims, little proof." },
-    b: { v: 3, label: "Some proof — but it isn’t organized." },
-    c: { v: 5, label: "Yes — proof is visible and structured." },
+    force: 'identity',
+    text: 'Do your best prospects trust you before the first call?',
+    a: { v: 1, label: 'No — calls feel like interviews.' },
+    b: { v: 3, label: 'Sometimes — depends on referral.' },
+    c: { v: 5, label: 'Yes — they arrive pre-sold.' },
   },
 
   // OFFER (2)
   {
-    id: "O1",
-    force: "offer",
-    text: "Is your flagship offer obvious and easy to choose?",
-    a: { v: 1, label: "No — it’s custom, confusing, or too many options." },
-    b: { v: 3, label: "Kind of — but people hesitate or negotiate." },
-    c: { v: 5, label: "Yes — one clear flagship with clean pricing." },
+    force: 'offer',
+    text: 'Is your flagship offer obvious and easy to choose?',
+    a: { v: 1, label: "No — it's custom, confusing, too many options." },
+    b: { v: 3, label: 'Kind of — but people hesitate or negotiate.' },
+    c: { v: 5, label: 'Yes — one clear flagship path.' },
   },
   {
-    id: "O2",
-    force: "offer",
-    text: "Does your offer describe an 'after-state' (not a list of deliverables)?",
-    a: { v: 1, label: "No — I sell tasks/time/features." },
-    b: { v: 3, label: "Some — but it’s not vivid or specific." },
-    c: { v: 5, label: "Yes — the transformation is concrete." },
+    force: 'offer',
+    text: 'Can a buyer self-qualify quickly (fit / price / outcome)?',
+    a: { v: 1, label: 'No — I explain everything live.' },
+    b: { v: 3, label: 'Somewhat — but lots of edge cases.' },
+    c: { v: 5, label: 'Yes — the page does the filtering.' },
   },
 
   // SYSTEM (3)
   {
-    id: "S1",
-    force: "system",
-    text: "Is lead flow predictable and controlled (not luck-based)?",
-    a: { v: 1, label: "No — feast/famine and chasing." },
-    b: { v: 3, label: "Somewhat — referrals + occasional wins." },
-    c: { v: 5, label: "Yes — repeatable pipeline + nurture." },
+    force: 'system',
+    text: 'Is lead flow predictable and controlled (not luck-based)?',
+    a: { v: 1, label: 'No — feast/famine + manual chasing.' },
+    b: { v: 3, label: 'Somewhat — referrals + occasional wins.' },
+    c: { v: 5, label: 'Yes — repeatable pipeline + nurture.' },
   },
   {
-    id: "S2",
-    force: "system",
-    text: "Can a stranger buy or book the next step without DM’ing you?",
-    a: { v: 1, label: "No — it requires back-and-forth." },
-    b: { v: 3, label: "Sometimes — but it’s not frictionless." },
-    c: { v: 5, label: "Yes — one obvious path to action." },
+    force: 'system',
+    text: 'Do you have a single “happy path” from attention → cash?',
+    a: { v: 1, label: "No — it's scattered across tools." },
+    b: { v: 3, label: "Partly — but it isn't consistent." },
+    c: { v: 5, label: 'Yes — one path, one CTA.' },
   },
   {
-    id: "S3",
-    force: "system",
-    text: "Do you have follow-up automation (so leads don’t leak)?",
-    a: { v: 1, label: "No — manual and inconsistent." },
-    b: { v: 3, label: "Some — but gaps exist." },
-    c: { v: 5, label: "Yes — systematic nurture + reminders." },
+    force: 'system',
+    text: 'Do leads get followed up without you remembering manually?',
+    a: { v: 1, label: 'No — I forget / it’s chaotic.' },
+    b: { v: 3, label: 'Some — a few reminders.' },
+    c: { v: 5, label: 'Yes — automation + cadence.' },
   },
 
-  // GROWTH (2)
+  // GROWTH (3)
   {
-    id: "G1",
-    force: "growth",
-    text: "Do you have a single metric and a weekly loop you actually run?",
-    a: { v: 1, label: "No — I react to urgency and bank balance." },
-    b: { v: 3, label: "Some — but consistency is weak." },
-    c: { v: 5, label: "Yes — clear north star + weekly rhythm." },
+    force: 'growth',
+    text: 'Do you have one metric + rhythm that drives execution weekly?',
+    a: { v: 1, label: 'No — I react to urgency + bank balance.' },
+    b: { v: 3, label: 'Some — I track revenue, not leading signals.' },
+    c: { v: 5, label: 'Yes — one north star + weekly loop.' },
   },
   {
-    id: "G2",
-    force: "growth",
-    text: "If you doubled demand tomorrow… would delivery stay stable?",
-    a: { v: 1, label: "No — it would break my life." },
-    b: { v: 3, label: "Maybe — but it would get chaotic." },
-    c: { v: 5, label: "Yes — it scales without chaos." },
+    force: 'growth',
+    text: 'Is your growth plan stable (90 days) or changing weekly?',
+    a: { v: 1, label: 'Changing weekly.' },
+    b: { v: 3, label: 'Somewhat stable.' },
+    c: { v: 5, label: 'Stable + deliberate.' },
+  },
+  {
+    force: 'growth',
+    text: 'Could your business grow 2× without you working 2× more?',
+    a: { v: 1, label: 'No — it would break.' },
+    b: { v: 3, label: 'Maybe — with stress.' },
+    c: { v: 5, label: 'Yes — leverage is built in.' },
   },
 ];
 
-// MICRO-SYMPTOMS (kept)
-const MICRO_SYMPTOMS: Record<ForceId, Record<StageId, string[]>> = {
-  essence: {
-    launch: [
-      "Calls turn into 'so what exactly do you do?' interrogations",
-      "You keep tweaking the homepage because it doesn't feel sharp",
-      "You explain your value differently depending on who asks",
-    ],
-    reposition: [
-      "Referrals describe you differently than you describe yourself",
-      "Your best clients came from an angle you haven't fully owned",
-      "Competitors with worse work charge more because their signal is clearer",
-    ],
-    scale: [
-      "New hires struggle to articulate what makes you different",
-      "Your team defaults to features instead of the core mechanism",
-      "Expansion feels risky because the 'what we do' isn't transferable",
-    ],
-  },
-  identity: {
-    launch: [
-      "You're hesitant to share your website with certain prospects",
-      "Your visuals feel 'good enough' but not investment-grade",
-      "People compliment your work but don't see you as premium yet",
-    ],
-    reposition: [
-      "Your brand looks startup-y even though you're past that stage",
-      "Prospects negotiate price because you don't look expensive",
-      "You've outgrown your identity but haven't refreshed it",
-    ],
-    scale: [
-      "Your brand doesn't match the size of deals you're closing",
-      "Enterprise prospects hesitate because you don't look enterprise",
-      "Partnerships fall through due to perceived brand mismatch",
-    ],
-  },
-  offer: {
-    launch: [
-      "People like you but say 'let me think about it' and ghost",
-      "You're doing custom proposals for every deal",
-      "Pricing conversations become negotiations",
-    ],
-    reposition: [
-      "Too many offers create decision paralysis",
-      "Your best clients bought something you no longer want to sell",
-      "Revenue is okay but you don't know what to double down on",
-    ],
-    scale: [
-      "Your offer architecture is complex and hard to explain",
-      "Upsells happen by accident, not design",
-      "You're leaving money on the table because the path isn't obvious",
-    ],
-  },
-  system: {
-    launch: [
-      "You're always busy but revenue isn't predictable",
-      "Leads come from hustle and luck",
-      "Follow-up slips because everything is manual chaos",
-    ],
-    reposition: [
-      "You get attention but conversion is low",
-      "Leads leak between awareness and purchase",
-      "Your CRM is messy (or missing)",
-    ],
-    scale: [
-      "The system lives in your head",
-      "Lead quality is inconsistent",
-      "Pipeline exists but close rate drops as you grow",
-    ],
-  },
-  growth: {
-    launch: [
-      "You react to urgency instead of leading indicators",
-      "Every month feels like starting from zero",
-      "You chase tactics because there's no clear plan",
-    ],
-    reposition: [
-      "Direction changes week to week",
-      "Growth happens in spurts",
-      "You track revenue but not the signals that predict it",
-    ],
-    scale: [
-      "Scaling feels chaotic and exhausting",
-      "Adding people/budget doesn't reliably increase output",
-      "You can't identify the one bottleneck slowing everything down",
-    ],
-  },
-};
-
-// LEAK INTELLIGENCE (kept and tuned)
+// --- LEAK INTELLIGENCE (tight but not thin) ---
 type LeakInfo = {
   leakName: string;
   humanSymptom: string;
   whatItMeans: string;
   todayMove: string;
   weekPlan: string[];
-  ifYouDont: string;
-  ifYouDo: string;
-  auditReason: string;
+  bookCallReason: string;
 };
 
 const LEAKS: Record<ForceId, LeakInfo> = {
   essence: {
-    leakName: "BLURRY MECHANISM",
-    humanSymptom: 'People say: "Interesting… but what exactly do you do?"',
+    leakName: 'BLURRY MECHANISM',
+    humanSymptom: 'People say: “Interesting… but what exactly do you do?”',
     whatItMeans:
-      "Your value may be real, but the signal is noisy. If the mechanism isn't named and repeatable, trust stays slow and price stays fragile.",
+      'Your capability may be strong, but your signal is noisy. If the mechanism isn’t named and repeatable, trust stays slow and price stays fragile.',
     todayMove:
-      'Write ONE sentence and place it on your hero + bio: "I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME]."',
+      'Write ONE sentence and place it on your hero + bio: “I help [WHO] get [OUTCOME] using [MECHANISM] in [TIME].”',
     weekPlan: [
-      "Name the mechanism (2–4 words). If you can’t name it, you don’t own it yet.",
-      "Rewrite your hero: Outcome + Mechanism + Proof + One CTA.",
-      "Publish one belief you own (a clear stance you can defend).",
+      'Name the mechanism (2–4 words). If you can’t name it, you don’t own it yet.',
+      'Rewrite hero: Outcome + Mechanism + Proof + One CTA.',
+      'Publish one belief you own (clear “this / not that”).',
     ],
-    ifYouDont:
-      "You keep explaining instead of attracting. Calls feel like interviews. Revenue stays tied to hustle.",
-    ifYouDo:
-      "Inbound becomes pre-sold. Pricing becomes logical. People repeat your mechanism for you.",
-    auditReason:
-      "The Audit validates the leak structurally and generates a fix plan (assets + 7-day execution loop).",
+    bookCallReason:
+      'A call confirms your mechanism on your actual site and locks the exact wording, proof stack, and repulsion points.',
   },
   identity: {
-    leakName: "STATUS GAP",
-    humanSymptom: "You're good, but you don't look expensive yet.",
+    leakName: 'STATUS GAP',
+    humanSymptom: 'You’re good — but you don’t look expensive yet.',
     whatItMeans:
-      "Your visual + verbal identity isn’t matching the level you want to charge. That creates doubt and negotiation.",
+      'Your identity isn’t matching the level you want to charge. That creates doubt, price negotiation, and “shopping you.”',
     todayMove:
-      "Replace safe language with proof: outcomes, constraints, numbers, and one bold claim you can defend.",
+      'Replace safe language with proof: outcomes, constraints, numbers, and one bold claim you can defend.',
     weekPlan: [
-      "Introduce one signature element across touchpoints (type, layout, motif).",
-      "Publish one authority post (your contrarian model).",
-      "Upgrade the top 3 assets: homepage, offer page, one case study.",
+      'Introduce one signature element across touchpoints (visual + verbal).',
+      'Publish one authority post: your model / contrarian framework.',
+      'Upgrade top 3 assets: homepage, offer page, one case study.',
     ],
-    ifYouDont:
-      "You keep justifying price. Prospects shop you against cheaper options. Resentment builds.",
-    ifYouDo:
-      "Price objections drop. Prospects interpret premium as obvious. Better leads arrive.",
-    auditReason:
-      "The Audit maps the proof stack + messaging hierarchy and tells you what to build next.",
+    bookCallReason:
+      'A call identifies the credibility gaps that cause negotiation and gives you a “proof stack order” to fix first.',
   },
   offer: {
-    leakName: "VALUE CONFUSION",
-    humanSymptom: "People like you… but don't buy fast.",
+    leakName: 'VALUE CONFUSION',
+    humanSymptom: 'People like you… but don’t buy fast.',
     whatItMeans:
-      "No single obvious flagship path. Too many options or too much custom creates hesitation.",
+      'No single obvious flagship path. Too many options or too much custom creates hesitation.',
     todayMove:
-      'Choose one flagship. Write: "This is for X. You get Y by Z. If you’re not X, do not apply."',
+      'Choose one flagship. Write: “This is for X. You get Y by Z. If you’re not X, do not apply.”',
     weekPlan: [
-      "Collapse offers → 1 flagship + 1 entry step.",
-      "Rewrite pricing page (one path, one CTA).",
-      "Publish one teardown showing how the offer produces the after-state.",
+      'Collapse offers → 1 flagship + 1 entry step.',
+      'Rewrite pricing page (one path, one CTA).',
+      'Publish one teardown: show how your offer creates the after-state.',
     ],
-    ifYouDont:
-      "More proposals. More 'let me think.' Close rate stays fragile.",
-    ifYouDo:
-      "Decision time drops from weeks to days. Scarcity becomes real. Demand tightens.",
-    auditReason:
-      "The Audit identifies the structural cause of hesitation and outputs an offer path + fix plan.",
+    bookCallReason:
+      'A call locks the flagship path, pricing logic, and the one CTA that converts — without bloating your offer set.',
   },
   system: {
-    leakName: "PIPELINE FRICTION",
-    humanSymptom: "You're busy… but revenue isn't predictable.",
+    leakName: 'PIPELINE FRICTION',
+    humanSymptom: 'You’re busy… but revenue isn’t predictable.',
     whatItMeans:
-      "Your path from attention → cash leaks. You may have demand signals, but not a controlled system.",
+      'Your path from attention → cash leaks. You may have demand signals, but not a controlled system.',
     todayMove:
-      "Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.",
+      'Write your happy path in 6 steps: Viewer → Lead → Call → Close → Onboard → Referral.',
     weekPlan: [
-      "Install one lead capture + one follow-up email.",
-      "Add one booking filter question to repel bad fits.",
-      "Create one nurture loop (weekly proof + CTA).",
+      'Install one lead capture + one follow-up email.',
+      'Add one booking filter question to repel bad fits.',
+      'Create one nurture loop (weekly proof + CTA).',
     ],
-    ifYouDont:
-      "Growth stays random. You work harder for unstable cash. Scaling becomes heavier.",
-    ifYouDo:
-      "You can forecast. Inputs → outputs become visible. Control returns.",
-    auditReason:
-      "The Audit pinpoints where prospects drop, why, and what to change first (with a 7-day plan).",
+    bookCallReason:
+      'A call maps the exact leak point and tells you what to change first (capture, qualification, nurture, or close).',
   },
   growth: {
-    leakName: "NO NORTH STAR",
-    humanSymptom: "You’re moving… but direction keeps changing.",
+    leakName: 'NO NORTH STAR',
+    humanSymptom: 'You’re moving… but direction keeps changing.',
     whatItMeans:
-      "No clean metric + rhythm. Growth becomes reactive, emotional, and exhausting.",
+      'No clean metric + rhythm. Growth becomes reactive, emotional, and exhausting.',
     todayMove:
-      "Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV). Track weekly on the same day.",
+      'Pick ONE metric for 30 days (qualified leads/week, close rate, or LTV). Track weekly on the same day.',
     weekPlan: [
-      "Choose one channel to dominate for 30 days.",
-      "Build one referral trigger (ask at the moment of first win).",
-      "Run a weekly review: metric → bottleneck → one fix → repeat.",
+      'Choose one channel to dominate for 30 days.',
+      'Add one referral trigger at the moment of first win.',
+      'Weekly review: metric → bottleneck → one fix → repeat.',
     ],
-    ifYouDont:
-      "More tactics, less momentum. Breakthrough stays out of reach.",
-    ifYouDo:
-      "Decisions become obvious. You build momentum without chaos.",
-    auditReason:
-      "The Audit tells you what to optimize first so growth becomes predictable (not emotional).",
+    bookCallReason:
+      'A call selects the single lever that will actually move your number (signal, offer, or system) and sets a 30-day loop.',
   },
 };
 
@@ -412,63 +275,42 @@ function pctFromChoice(v: Choice) {
   return 100;
 }
 
-function bandLabel(pct: number) {
-  if (pct >= 80) return "STRONG";
-  if (pct >= 55) return "UNSTABLE";
-  return "CRITICAL";
-}
-
 function sortForcesByWeakest(scores: Record<ForceId, number>) {
   const pairs = (Object.keys(scores) as ForceId[]).map((k) => [k, scores[k]] as const);
   return pairs.sort((a, b) => a[1] - b[1]);
 }
 
-function computeConfidence(primary: number, secondary: number) {
-  const gap = secondary - primary; // higher = more decisive
-  // Map a reasonable range into LOW/MED/HIGH
-  if (gap >= 18) return { label: "HIGH", hint: "Clear dominant leak signal.", pct: 85 };
-  if (gap >= 10) return { label: "MED", hint: "Primary leak is likely, but close contenders exist.", pct: 65 };
-  return { label: "LOW", hint: "Signals are mixed. Audit will validate structurally.", pct: 45 };
-}
-
-// ------------------------ STATE ------------------------
-
-type View = "start" | "ritual" | "scan" | "aha" | "result" | "export";
-
-type Answer = {
-  qid: string;
-  force: ForceId;
-  v: Choice;
-};
+type View = 'start' | 'welcome' | 'scan' | 'checkpoint' | 'result' | 'email';
 
 type State = {
   stage: StageId;
+  symptom: SymptomId | null;
   idx: number;
-  answers: Answer[];
+  answers: Partial<Record<ForceId, Choice[]>>; // store arrays so we can average per force
   view: View;
   createdAtISO: string;
-  ahaShown: boolean;
-  // optional export
+  checkpointCount: number;
   email: string;
   name: string;
   website: string;
 };
 
 const DEFAULT_STATE: State = {
-  stage: "launch",
+  stage: 'launch',
+  symptom: null,
   idx: 0,
-  answers: [],
-  view: "start",
+  answers: {},
+  view: 'start',
   createdAtISO: new Date().toISOString(),
-  ahaShown: false,
-  email: "",
-  name: "",
-  website: "",
+  checkpointCount: 0,
+  email: '',
+  name: '',
+  website: '',
 };
 
 function loadStateSafe(): State | null {
   try {
-    if (typeof window === "undefined") return null;
+    if (typeof window === 'undefined') return null;
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     return JSON.parse(raw) as State;
@@ -479,112 +321,98 @@ function loadStateSafe(): State | null {
 
 function saveStateSafe(s: State) {
   try {
-    if (typeof window === "undefined") return;
+    if (typeof window === 'undefined') return;
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
   } catch {
     // ignore
   }
 }
 
-// ------------------------ TIMER ------------------------
-
+// 48h decay timer (keeps urgency without being spammy)
 function useDecayTimer(createdAt: string) {
   const [now, setNow] = useState(Date.now());
-
   useEffect(() => {
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, []);
-
   const created = new Date(createdAt).getTime();
-  const expires = created + 48 * 60 * 60 * 1000; // 48 hours
+  const expires = created + 48 * 60 * 60 * 1000;
   const remaining = Math.max(0, expires - now);
-
   const hours = Math.floor(remaining / (60 * 60 * 1000));
   const mins = Math.floor((remaining % (60 * 60 * 1000)) / (60 * 1000));
   const secs = Math.floor((remaining % (60 * 1000)) / 1000);
-
   return { hours, mins, secs, expired: remaining === 0 };
 }
-
-// ------------------------ UI PRIMITIVES ------------------------
 
 function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="qbg">
       <style>{CSS}</style>
       <div className="wrap">
-        {children}
+        <div className="main">{children}</div>
         <div className="footer">
-          <div className="footerLeft">
-            <span className="footerTag">QTMBG</span>
-            <span className="muted">
-              Signal OS is a scan. Audit validates structurally and outputs a fix plan.
-            </span>
-          </div>
-          <div className="footerRight muted">© {new Date().getFullYear()}</div>
+          <span className="footerTag">QTMBG</span>
+          <span className="muted">Signal OS is a scan — built to create clarity and the next move.</span>
         </div>
       </div>
     </div>
   );
 }
 
-function HeaderBar() {
+function TopBar({ rightText }: { rightText: string }) {
   return (
     <div className="top">
       <div className="brand">
         <span className="brandBox">QUANTUM BRANDING</span>
         <span className="brandName">Signal OS</span>
       </div>
-      <div className="topMeta muted">~3–5 min • 12 questions • primary leak</div>
+      <div className="muted tiny">{rightText}</div>
     </div>
   );
 }
 
-function Card({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return <div className={`card ${className}`}>{children}</div>;
 }
 
 function Btn({
   children,
   onClick,
-  variant = "primary",
+  variant = 'primary',
   disabled = false,
   icon,
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  variant?: "primary" | "secondary";
+  variant?: 'primary' | 'secondary';
   disabled?: boolean;
   icon?: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      className={`btn ${variant} ${disabled ? "disabled" : ""}`}
+      className={`btn ${variant} ${disabled ? 'disabled' : ''}`}
       onClick={onClick}
       disabled={disabled}
     >
       {icon}
-      <span>{children}</span>
+      <span className="btnText">{children}</span>
       <ArrowRight size={16} />
     </button>
   );
 }
 
-function ProgressPill({ current, total }: { current: number; total: number }) {
+function ProgressBar({ current, total }: { current: number; total: number }) {
+  const pct = clamp((current / total) * 100, 0, 100);
   return (
-    <div className="pill muted">
-      <span className="pillStrong">{current}</span>
-      <span className="pillSep">/</span>
-      <span>{total}</span>
+    <div className="progress">
+      <div className="progressIn" style={{ width: `${pct}%` }} />
     </div>
   );
 }
 
 function DecayTimer({ createdAt }: { createdAt: string }) {
   const { hours, mins, secs, expired } = useDecayTimer(createdAt);
-
   if (expired) {
     return (
       <div className="timer expired">
@@ -593,53 +421,22 @@ function DecayTimer({ createdAt }: { createdAt: string }) {
       </div>
     );
   }
-
   return (
     <div className="timer">
       <Clock size={14} />
       <span>
-        Insights expire in{" "}
+        Insights expire in{' '}
         <strong>
-          {hours.toString().padStart(2, "0")}:{mins.toString().padStart(2, "0")}:
-          {secs.toString().padStart(2, "0")}
+          {hours.toString().padStart(2, '0')}:{mins.toString().padStart(2, '0')}:{secs.toString().padStart(2, '0')}
         </strong>
       </span>
     </div>
   );
 }
 
-function StagePicker({ value, onChange }: { value: StageId; onChange: (s: StageId) => void }) {
-  return (
-    <div className="field">
-      <div className="label">
-        Your situation <span className="req">*</span>
-      </div>
-      <div className="stageGrid">
-        {STAGES.map((s) => {
-          const active = value === s.id;
-          return (
-            <button
-              key={s.id}
-              type="button"
-              className={`stage ${active ? "active" : ""}`}
-              onClick={() => onChange(s.id)}
-            >
-              <div className="stageTitle">{s.label}</div>
-              <div className="tiny muted">{s.sub}</div>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ------------------------ MAIN ------------------------
-
 export default function Page() {
   const [state, setState] = useState<State>(DEFAULT_STATE);
 
-  // Hydrate
   useEffect(() => {
     const loaded = loadStateSafe();
     if (loaded) setState(loaded);
@@ -650,26 +447,14 @@ export default function Page() {
   }, [state]);
 
   useEffect(() => {
-    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [state.view, state.idx]);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [state.view]);
 
   const total = QUESTIONS.length;
 
-  // Aggregate scoring by force (avg of its answered questions)
+  // scores per force = average of answers stored for that force
   const scores = useMemo(() => {
-    const bucket: Record<ForceId, number[]> = {
-      essence: [],
-      identity: [],
-      offer: [],
-      system: [],
-      growth: [],
-    };
-
-    for (const a of state.answers) {
-      bucket[a.force].push(pctFromChoice(a.v));
-    }
-
-    const out: Record<ForceId, number> = {
+    const s: Record<ForceId, number> = {
       essence: 0,
       identity: 0,
       offer: 0,
@@ -677,155 +462,216 @@ export default function Page() {
       growth: 0,
     };
 
-    (Object.keys(out) as ForceId[]).forEach((f) => {
-      const arr = bucket[f];
-      if (!arr.length) out[f] = 0;
-      else out[f] = Math.round(arr.reduce((x, y) => x + y, 0) / arr.length);
+    (Object.keys(s) as ForceId[]).forEach((f) => {
+      const arr = state.answers[f] ?? [];
+      if (!arr.length) s[f] = 0;
+      else {
+        const avg = arr.reduce((sum, v) => sum + pctFromChoice(v), 0) / arr.length;
+        s[f] = Math.round(avg);
+      }
     });
 
-    return out;
+    return s;
   }, [state.answers]);
 
   const diagnosis = useMemo(() => {
     const sorted = sortForcesByWeakest(scores);
-    const primary = sorted[0]?.[0] ?? "essence";
-    const secondary = sorted[1]?.[0] ?? "identity";
+    const primary = sorted[0]?.[0] ?? 'essence';
+    const secondary = sorted[1]?.[0] ?? 'identity';
     return { primary, secondary };
   }, [scores]);
 
-  const confidence = useMemo(() => {
-    const sorted = sortForcesByWeakest(scores);
-    const primaryScore = sorted[0]?.[1] ?? 0;
-    const secondaryScore = sorted[1]?.[1] ?? 0;
-    return computeConfidence(primaryScore, secondaryScore);
-  }, [scores]);
+  const startScan = () => {
+    setState((prev) => ({
+      ...prev,
+      view: 'welcome',
+      idx: 0,
+      answers: {},
+      checkpointCount: 0,
+      createdAtISO: new Date().toISOString(),
+    }));
+  };
 
-  const resetAll = () => {
+  const goToScan = () => setState((p) => ({ ...p, view: 'scan' }));
+
+  const pickAnswer = (force: ForceId, v: Choice) => {
+    setState((prev) => {
+      const existing = prev.answers[force] ?? [];
+      const nextAnswers = { ...prev.answers, [force]: [...existing, v] };
+
+      const nextIdx = prev.idx + 1;
+
+      // show checkpoints after Q4 and Q8 (Liven-like “moment”)
+      const shouldCheckpoint = (nextIdx === 4 || nextIdx === 8) && prev.checkpointCount < 2;
+
+      if (shouldCheckpoint) {
+        return {
+          ...prev,
+          answers: nextAnswers,
+          idx: nextIdx,
+          view: 'checkpoint',
+          checkpointCount: prev.checkpointCount + 1,
+        };
+      }
+
+      if (nextIdx >= total) {
+        return {
+          ...prev,
+          answers: nextAnswers,
+          idx: total - 1,
+          view: 'result',
+        };
+      }
+
+      return { ...prev, answers: nextAnswers, idx: nextIdx };
+    });
+  };
+
+  const goBack = () => setState((p) => ({ ...p, idx: Math.max(0, p.idx - 1) }));
+
+  const restart = () => {
     try {
-      if (typeof window !== "undefined") window.localStorage.removeItem(STORAGE_KEY);
+      if (typeof window !== 'undefined') window.localStorage.removeItem(STORAGE_KEY);
     } catch {
       // ignore
     }
     setState({ ...DEFAULT_STATE, createdAtISO: new Date().toISOString() });
   };
 
-  const begin = () => {
-    // Start → Ritual (sets legitimacy)
-    setState((p) => ({
-      ...p,
-      view: "ritual",
-      idx: 0,
-      answers: [],
-      ahaShown: false,
-      createdAtISO: new Date().toISOString(),
-    }));
-  };
+  const toEmail = () => setState((p) => ({ ...p, view: 'email' }));
 
-  const startScan = () => {
-    setState((p) => ({ ...p, view: "scan", idx: 0 }));
-  };
-
-  const pick = (q: Question, v: Choice) => {
-    setState((prev) => {
-      const nextAnswers = prev.answers.filter((a) => a.qid !== q.id);
-      nextAnswers.push({ qid: q.id, force: q.force, v });
-
-      const nextIdx = prev.idx + 1;
-
-      // AHA moment after 4 answers (fast pattern recognition, not too early)
-      if (nextIdx === 4 && !prev.ahaShown) {
-        return { ...prev, answers: nextAnswers, idx: nextIdx, view: "aha" };
-      }
-
-      if (nextIdx >= total) {
-        return { ...prev, answers: nextAnswers, idx: total - 1, view: "result" };
-      }
-
-      return { ...prev, answers: nextAnswers, idx: nextIdx, view: "scan" };
-    });
-  };
-
-  const goBack = () => {
-    setState((p) => ({ ...p, idx: Math.max(0, p.idx - 1) }));
-  };
-
-  const continueFromAha = () => {
-    setState((p) => ({ ...p, view: "scan", ahaShown: true }));
-  };
-
-  const toExport = () => setState((p) => ({ ...p, view: "export" }));
-
-  const submitExport = () => {
-    // Placeholder hook. You’ll wire backend later.
-    // Keep on-screen value-first: export is optional.
-    console.log("Signal export:", {
-      email: state.email,
-      name: state.name,
-      website: state.website,
-      stage: state.stage,
-      scores,
-      diagnosis,
-    });
-    alert(`Saved, ${state.name || "operator"}. You'll receive your Signal breakdown.`);
-    setState((p) => ({ ...p, view: "result" }));
+  const submitEmail = () => {
+    // hook to backend later
+    console.log('Email capture:', { email: state.email, name: state.name, website: state.website, stage: state.stage, symptom: state.symptom });
+    alert(`Thanks ${state.name || 'there'} — you’ll get the breakdown by email.`);
+    setState((p) => ({ ...p, view: 'result' }));
   };
 
   const toAudit = () => {
-    // Pass a clean contract to Audit
     const params = new URLSearchParams({
-      from: "signal",
+      from: 'signal',
       stage: state.stage,
+      symptom: state.symptom ?? '',
       primary: diagnosis.primary,
       secondary: diagnosis.secondary,
-      confidence: confidence.label,
-      scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(","),
-      ...(state.name ? { name: state.name } : {}),
-      ...(state.email ? { email: state.email } : {}),
-      ...(state.website ? { website: state.website } : {}),
+      scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(','),
+      ...(state.name && { name: state.name }),
+      ...(state.email && { email: state.email }),
+      ...(state.website && { website: state.website }),
     });
 
-    if (typeof window !== "undefined") {
+    if (typeof window !== 'undefined') {
       window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
     }
   };
 
-  // ------------------------ VIEWS ------------------------
+  const toCall = () => {
+    // For now route to audit with intent=call (you can handle it there)
+    const params = new URLSearchParams({
+      intent: 'call',
+      from: 'signal',
+      stage: state.stage,
+      symptom: state.symptom ?? '',
+      primary: diagnosis.primary,
+      secondary: diagnosis.secondary,
+      scores: (Object.keys(scores) as ForceId[]).map((k) => `${k}-${scores[k]}`).join(','),
+      ...(state.name && { name: state.name }),
+      ...(state.email && { email: state.email }),
+      ...(state.website && { website: state.website }),
+    });
 
-  if (state.view === "start") {
+    if (typeof window !== 'undefined') {
+      window.location.href = `https://audit.qtmbg.com/?${params.toString()}`;
+    }
+  };
+
+  // ---------------- VIEWS ----------------
+
+  if (state.view === 'start') {
     return (
       <AppShell>
-        <HeaderBar />
+        <TopBar rightText="~4 min • 12 questions • primary + secondary leak" />
 
         <div className="hero">
           <div className="kicker center">SIGNAL SCAN</div>
           <div className="h1 center">Find the one thing weakening your brand right now.</div>
           <div className="sub center">
-            12 questions. You get your primary leak and the next move.
+            You’ll answer 12 fast questions and get:
             <br />
-            <b>No email required to see results.</b>
+            <b>your primary leak, your secondary leak, and a 7-day micro-plan.</b>
+            <div className="fine muted" style={{ marginTop: 10 }}>
+              No email required to see results.
+            </div>
           </div>
         </div>
 
         <Card>
-          <StagePicker value={state.stage} onChange={(s) => setState((p) => ({ ...p, stage: s }))} />
+          <div className="field">
+            <div className="label">
+              Your situation <span className="req">*</span>
+            </div>
+            <div className="stageGrid">
+              {STAGES.map((s) => {
+                const active = state.stage === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`stage ${active ? 'active' : ''}`}
+                    onClick={() => setState((p) => ({ ...p, stage: s.id }))}
+                  >
+                    <div className="stageTitle">{s.label}</div>
+                    <div className="tiny muted">{s.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
-          <div className="startRow">
-            <Btn variant="primary" onClick={begin} icon={<Zap size={16} />}>
+          <div className="field" style={{ marginTop: 18 }}>
+            <div className="label">
+              Your main symptom <span className="req">*</span>
+            </div>
+            <div className="symGrid">
+              {SYMPTOMS.map((s) => {
+                const active = state.symptom === s.id;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`sym ${active ? 'active' : ''}`}
+                    onClick={() => setState((p) => ({ ...p, symptom: s.id }))}
+                  >
+                    <div className="symTitle">{s.label}</div>
+                    <div className="tiny muted">{s.sub}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="ctaRow">
+            <Btn
+              variant="primary"
+              onClick={startScan}
+              disabled={!state.symptom}
+              icon={<Zap size={16} />}
+            >
               Start the scan
             </Btn>
 
-            <div className="trustInline">
+            <div className="trust">
               <div className="trustItem">
                 <CheckCircle2 size={14} />
                 <span>Value first</span>
               </div>
               <div className="trustItem">
                 <CheckCircle2 size={14} />
-                <span>Actionable today + this week</span>
+                <span>Built for action</span>
               </div>
               <div className="trustItem">
                 <CheckCircle2 size={14} />
-                <span>Built for conversion, not trivia</span>
+                <span>Not trivia</span>
               </div>
             </div>
           </div>
@@ -834,82 +680,68 @@ export default function Page() {
     );
   }
 
-  if (state.view === "ritual") {
+  if (state.view === 'welcome') {
+    const symptomLabel = SYMPTOMS.find((s) => s.id === state.symptom)?.label ?? 'your symptom';
+
     return (
       <AppShell>
-        <HeaderBar />
+        <TopBar rightText="~4 min • 12 questions • fast taps" />
 
-        <Card className="ritual">
-          <div className="ritualIcon">
-            <Target size={28} />
+        <Card className="welcome">
+          <div className="welcomeIcon">
+            <Sparkles size={26} />
           </div>
 
-          <div className="ritualTitle">Operator briefing.</div>
+          <div className="welcomeTitle">Good. Now be honest.</div>
 
-          <div className="ritualText">
-            This scan is designed to locate your <b>primary leak</b> — the structural weakness causing the symptoms you feel
-            (ghosting, negotiation, feast/famine, scattered growth).
+          <div className="welcomeText">
+            You selected: <b>{symptomLabel}</b>.
             <br />
-            <br />
-            You’ll answer fast. The output is <b>one leak + one next move</b>.
-            Audit is where we validate and generate the full fix plan.
+            This scan is designed to find the <b>structural leak</b> behind that symptom — not to flatter you.
           </div>
 
-          <div className="ritualRules">
-            <div className="ruleItem">
-              <CheckCircle2 size={14} />
-              <span>Answer based on your current reality (not what you wish).</span>
-            </div>
-            <div className="ruleItem">
-              <CheckCircle2 size={14} />
-              <span>Go with the first honest response. Don’t overthink.</span>
-            </div>
-            <div className="ruleItem">
-              <CheckCircle2 size={14} />
-              <span>No email required to see the leak.</span>
-            </div>
+          <div className="welcomeBox">
+            <div className="welcomeBoxTitle">How to use this</div>
+            <ul className="list">
+              <li>Answer based on what your market experiences — not your intentions.</li>
+              <li>If you hesitate between two options, pick the lower one.</li>
+              <li>You’ll get a leak + a 7-day plan at the end.</li>
+            </ul>
           </div>
 
-          <div className="ctaRow">
-            <Btn variant="primary" onClick={startScan} icon={<ArrowRight size={16} />}>
-              Begin
+          <div className="ctaRow" style={{ justifyContent: 'center' }}>
+            <Btn variant="primary" onClick={goToScan} icon={<Target size={16} />}>
+              Continue
             </Btn>
-            <button className="link" type="button" onClick={resetAll}>
-              Reset
-            </button>
           </div>
 
-          <div className="tiny muted">
-            You can export the breakdown later (optional).
+          <div className="tiny muted" style={{ textAlign: 'center', marginTop: 10 }}>
+            This is a scan. The Deep Audit is where we build the full fix plan.
           </div>
         </Card>
       </AppShell>
     );
   }
 
-  if (state.view === "aha") {
+  if (state.view === 'checkpoint') {
     const sorted = sortForcesByWeakest(scores);
-    const emerging = sorted[0]?.[0] ?? "essence";
+    const emerging = sorted[0]?.[0] ?? 'essence';
     const emergingMeta = FORCES.find((f) => f.id === emerging)!;
     const EmergingIcon = emergingMeta.icon;
 
     return (
       <AppShell>
-        <HeaderBar />
+        <TopBar rightText="Pattern checkpoint" />
 
         <Card className="aha">
-          <div className="ahaTop">
-            <div className="ahaLeft">
-              <div className="kicker">PATTERN DETECTED</div>
-              <div className="ahaTitle">Early signal emerging.</div>
-              <div className="ahaText">
-                Based on your first answers, I’m seeing a likely leak in your{" "}
-                <strong>{emergingMeta.label}</strong>.
-              </div>
-            </div>
-            <div className="ahaRight">
-              <ProgressPill current={Math.min(state.idx, total)} total={total} />
-            </div>
+          <div className="ahaIcon">
+            <Target size={32} />
+          </div>
+
+          <div className="ahaTitle">Pattern detected.</div>
+
+          <div className="ahaText">
+            Based on your answers so far, the leak is clustering in <strong>{emergingMeta.label}</strong>.
           </div>
 
           <div className="ahaForce">
@@ -921,54 +753,37 @@ export default function Page() {
           </div>
 
           <div className="ahaHint">
-            {emerging === "essence" &&
-              "Usually: your mechanism isn’t named sharply enough to create instant trust."}
-            {emerging === "identity" &&
-              "Usually: your identity doesn’t match the level you want to charge."}
-            {emerging === "offer" &&
-              "Usually: you don’t have one obvious flagship path — options create paralysis."}
-            {emerging === "system" &&
-              "Usually: lead flow is unpredictable — more feast/famine than controlled pipeline."}
-            {emerging === "growth" &&
-              "Usually: you’re reacting to urgency instead of tracking one metric."}
+            We’re going to confirm this in the next questions.
+            <br />
+            If it holds, your result will include a specific 7-day plan to fix it.
           </div>
 
-          <div className="ahaQuestion">Sound familiar?</div>
-
-          <div className="ctaRow">
-            <Btn variant="primary" onClick={continueFromAha}>
-              Yes — confirm it
-            </Btn>
-            <Btn variant="secondary" onClick={continueFromAha}>
-              Not sure — keep going
+          <div className="ctaRow" style={{ justifyContent: 'center' }}>
+            <Btn variant="primary" onClick={goToScan}>
+              Continue
             </Btn>
           </div>
 
-          <div className="tiny muted">
-            This is pattern recognition. The remaining questions confirm or refine the diagnosis.
+          <div className="tiny muted" style={{ textAlign: 'center' }}>
+            This is why the scan feels “accurate” — it’s not random scoring.
           </div>
         </Card>
       </AppShell>
     );
   }
 
-  if (state.view === "scan") {
+  if (state.view === 'scan') {
     const q = QUESTIONS[state.idx];
     const forceMeta = FORCES.find((f) => f.id === q.force)!;
     const Icon = forceMeta.icon;
 
     return (
       <AppShell>
-        <HeaderBar />
+        <TopBar rightText={`~4 min • Question ${state.idx + 1}/${total}`} />
 
         <div className="scanHead">
           <div className="scanLeft">
-            <div className="scanKicker">
-              <span className="muted">Signal scan</span>
-              <span className="dot">•</span>
-              <ProgressPill current={state.idx + 1} total={total} />
-            </div>
-
+            <div className="kicker">QUESTION {state.idx + 1} / {total}</div>
             <div className="forceLine">
               <Icon size={18} />
               <div>
@@ -977,7 +792,6 @@ export default function Page() {
               </div>
             </div>
           </div>
-
           <div className="scanRight">
             <button className="link" type="button" onClick={goBack} disabled={state.idx === 0}>
               Back
@@ -985,11 +799,13 @@ export default function Page() {
           </div>
         </div>
 
+        <ProgressBar current={state.idx + 1} total={total} />
+
         <Card>
           <div className="qText">{q.text}</div>
 
           <div className="choices">
-            <button className="choice" type="button" onClick={() => pick(q, q.a.v)}>
+            <button className="choice" type="button" onClick={() => pickAnswer(q.force, q.a.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -997,7 +813,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q, q.b.v)}>
+            <button className="choice" type="button" onClick={() => pickAnswer(q.force, q.b.v)}>
               <div className="choiceDot">
                 <CircleDashed size={14} />
               </div>
@@ -1005,7 +821,7 @@ export default function Page() {
               <ChevronRight size={16} className="chev" />
             </button>
 
-            <button className="choice" type="button" onClick={() => pick(q, q.c.v)}>
+            <button className="choice" type="button" onClick={() => pickAnswer(q.force, q.c.v)}>
               <div className="choiceDot">
                 <CheckCircle2 size={14} />
               </div>
@@ -1018,17 +834,15 @@ export default function Page() {
     );
   }
 
-  if (state.view === "export") {
+  if (state.view === 'email') {
     return (
       <AppShell>
-        <HeaderBar />
+        <TopBar rightText="Export" />
 
         <div className="hero">
           <div className="kicker center">EXPORT</div>
           <div className="h1 center">Email the breakdown + keep it.</div>
-          <div className="sub center">
-            One useful email: your primary leak, signal snapshot, benchmarks, and the next move.
-          </div>
+          <div className="sub center">One useful email — your leak, your scores, and your 7-day plan.</div>
         </div>
 
         <Card>
@@ -1075,42 +889,34 @@ export default function Page() {
           <div className="ctaRow">
             <Btn
               variant="primary"
-              onClick={submitExport}
+              onClick={submitEmail}
               disabled={!state.email}
               icon={<Send size={16} />}
             >
               Email me the breakdown
             </Btn>
 
-            <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: "result" }))}>
+            <button className="link" type="button" onClick={() => setState((p) => ({ ...p, view: 'result' }))}>
               Skip
             </button>
           </div>
 
-          <div className="tiny muted">No spam. One useful email with your analysis.</div>
+          <div className="tiny muted">No spam. One analysis email.</div>
         </Card>
       </AppShell>
     );
   }
 
-  // ------------------------ RESULT ------------------------
-
-  const primary = diagnosis.primary;
-  const secondary = diagnosis.secondary;
-
-  const primaryInfo = LEAKS[primary];
+  // RESULT
+  const { primary, secondary } = diagnosis;
   const primaryMeta = FORCES.find((f) => f.id === primary)!;
-
-  const symptoms = MICRO_SYMPTOMS[primary][state.stage];
-  const benchmark = BENCHMARKS[primary][state.stage];
-
-  const primaryScore = scores[primary];
-  const gap = benchmark.avg - primaryScore;
-  const topGap = benchmark.top10 - primaryScore;
+  const secondaryMeta = FORCES.find((f) => f.id === secondary)!;
+  const primaryInfo = LEAKS[primary];
+  const secondaryInfo = LEAKS[secondary];
 
   return (
     <AppShell>
-      <HeaderBar />
+      <TopBar rightText="Results" />
 
       <DecayTimer createdAt={state.createdAtISO} />
 
@@ -1118,35 +924,7 @@ export default function Page() {
         <div className="kicker center">YOUR PRIMARY LEAK</div>
         <div className="h1 leak center">{primaryInfo.leakName}</div>
         <div className="sub center">{primaryInfo.humanSymptom}</div>
-
-        <div className="metaRow">
-          <div className="metaItem">
-            <span className="metaLabel">Confidence</span>
-            <span className="metaValue">{confidence.label}</span>
-            <span className="metaHint muted">{confidence.hint}</span>
-          </div>
-          <div className="metaItem">
-            <span className="metaLabel">Stage</span>
-            <span className="metaValue">{state.stage.toUpperCase()}</span>
-          </div>
-          <div className="metaItem">
-            <span className="metaLabel">Secondary</span>
-            <span className="metaValue">{secondary.toUpperCase()}</span>
-          </div>
-        </div>
       </div>
-
-      <Card className="symptoms">
-        <div className="symptomsTitle">If this is true, you’ll recognize these:</div>
-        <div className="symptomList">
-          {symptoms.map((s, i) => (
-            <div key={i} className="symptomItem">
-              <CheckCircle2 size={16} />
-              <span>{s}</span>
-            </div>
-          ))}
-        </div>
-      </Card>
 
       <Card>
         <div className="resultGrid">
@@ -1164,61 +942,67 @@ export default function Page() {
               ))}
             </ul>
 
-            <div className="panelTitle mt">How you compare</div>
-            <div className="benchmark">
-              <div className="benchRow">
-                <span className="benchLabel">Your {primaryMeta.label}:</span>
-                <span className="benchValue">{primaryScore}</span>
-              </div>
-              <div className="benchRow">
-                <span className="benchLabel">Stage average:</span>
-                <span className="benchValue">{benchmark.avg}</span>
-              </div>
-              <div className="benchRow strong">
-                <span className="benchLabel">Top 10%:</span>
-                <span className="benchValue">{benchmark.top10}</span>
-              </div>
+            <div className="panelTitle mt">Why book a call</div>
+            <div className="panelText">{primaryInfo.bookCallReason}</div>
+
+            <div className="commitLadder">
+              <button className="commitStep primary" type="button" onClick={toCall}>
+                <div className="commitIcon">
+                  <TrendingUp size={18} />
+                </div>
+                <div className="commitContent">
+                  <div className="commitTitle">Book a 15-min leak review</div>
+                  <div className="commitSub">Confirm the leak on your site + lock the first fix</div>
+                </div>
+                <ArrowRight size={18} />
+              </button>
+
+              <button className="commitStep" type="button" onClick={toAudit}>
+                <div className="commitIcon">
+                  <Target size={18} />
+                </div>
+                <div className="commitContent">
+                  <div className="commitTitle">Run the Deep Audit</div>
+                  <div className="commitSub">Longer diagnostic + fix plan + export</div>
+                </div>
+                <ChevronRight size={18} />
+              </button>
+
+              <button className="commitStep" type="button" onClick={toEmail}>
+                <div className="commitIcon">
+                  <Send size={18} />
+                </div>
+                <div className="commitContent">
+                  <div className="commitTitle">Email me this result</div>
+                  <div className="commitSub">Save your scores + plan</div>
+                </div>
+                <ChevronRight size={18} />
+              </button>
             </div>
 
-            <div className="panelText small">
-              You are <strong>{Math.abs(gap)} points</strong> {gap < 0 ? "above" : "below"} average and{" "}
-              <strong>{Math.abs(topGap)} points</strong> from premium positioning.
-            </div>
+            <button className="link" type="button" onClick={restart}>
+              New scan
+            </button>
 
-            <div className="outcomes">
-              <div className="outcome bad">
-                <div className="outcomeLabel">If you don’t fix this:</div>
-                <div className="outcomeText">{primaryInfo.ifYouDont}</div>
-              </div>
-              <div className="outcome good">
-                <div className="outcomeLabel">If you do:</div>
-                <div className="outcomeText">{primaryInfo.ifYouDo}</div>
-              </div>
-            </div>
-
-            <div className="panelTitle mt">Important</div>
-            <div className="panelText small">
-              Signal OS tells you <b>where</b> you leak. Audit tells you <b>why</b> and outputs the fix plan (assets + 7-day loop).
+            <div className="tiny muted mt">
+              Primary CTA is the call. Deep Audit is the next layer when they want more proof + specificity.
             </div>
           </div>
 
           <div className="panel soft">
             <div className="panelTitle">Signal snapshot</div>
+
             <div className="bars">
               {(Object.keys(scores) as ForceId[]).map((f) => {
                 const meta = FORCES.find((x) => x.id === f)!;
                 const pct = scores[f];
-                const isPrimary = f === primary;
-                const isSecondary = f === secondary;
-                const tag = isPrimary ? "PRIMARY LEAK" : isSecondary ? "SECONDARY" : bandLabel(pct);
+                const tag = f === primary ? 'PRIMARY' : f === secondary ? 'SECONDARY' : pct >= 80 ? 'STRONG' : pct >= 55 ? 'UNSTABLE' : 'CRITICAL';
 
                 return (
                   <div key={f} className="barRow">
                     <div className="barLeft">
                       <div className="barName">{meta.label}</div>
-                      <div className={`tag ${isPrimary ? "tagHard" : isSecondary ? "tagWarn" : ""}`}>
-                        {tag}
-                      </div>
+                      <div className={`tag ${f === primary ? 'tagHard' : f === secondary ? 'tagWarn' : ''}`}>{tag}</div>
                     </div>
                     <div className="barWrap">
                       <div className="barIn" style={{ width: `${pct}%` }} />
@@ -1231,39 +1015,36 @@ export default function Page() {
 
             <div className="divider" />
 
-            <div className="panelTitle">Next step</div>
-            <div className="panelText small">{primaryInfo.auditReason}</div>
-
-            <div className="commitLadder">
-              <button className="commitStep" type="button" onClick={toExport}>
-                <div className="commitIcon">
-                  <Send size={18} />
-                </div>
-                <div className="commitContent">
-                  <div className="commitTitle">Email me the breakdown</div>
-                  <div className="commitSub">Optional • Save this analysis</div>
-                </div>
-                <ChevronRight size={18} />
-              </button>
-
-              <button className="commitStep primary" type="button" onClick={toAudit}>
-                <div className="commitIcon">
-                  <TrendingUp size={18} />
-                </div>
-                <div className="commitContent">
-                  <div className="commitTitle">Validate structurally in Audit</div>
-                  <div className="commitSub">Deeper diagnostic • Fix plan artifact</div>
-                </div>
-                <ArrowRight size={18} />
-              </button>
+            <div className="panelTitle">Your secondary leak</div>
+            <div className="panelText">
+              <b>{secondaryMeta.label}:</b> {secondaryInfo.leakName}
+              <div className="tiny muted" style={{ marginTop: 8 }}>
+                This is the “supporting problem” that keeps the primary leak alive.
+              </div>
             </div>
 
-            <button className="link" type="button" onClick={resetAll}>
-              New scan
-            </button>
+            <div className="miniBox" style={{ marginTop: 14 }}>
+              <div className="miniTitle">Your inputs</div>
+              <div className="miniLine">
+                <span className="miniKey">Stage</span>
+                <span className="miniVal">{STAGES.find((s) => s.id === state.stage)?.label}</span>
+              </div>
+              <div className="miniLine">
+                <span className="miniKey">Symptom</span>
+                <span className="miniVal">{SYMPTOMS.find((s) => s.id === state.symptom)?.label}</span>
+              </div>
+              <div className="miniLine">
+                <span className="miniKey">Primary</span>
+                <span className="miniVal">{primaryMeta.label}</span>
+              </div>
+              <div className="miniLine">
+                <span className="miniKey">Secondary</span>
+                <span className="miniVal">{secondaryMeta.label}</span>
+              </div>
+            </div>
 
             <div className="tiny muted mt">
-              We pass your stage + leak + scores into Audit so you don’t start from zero.
+              This result is intentionally sharp. The Deep Audit is where we add branching, structure, and a full fix plan.
             </div>
           </div>
         </div>
@@ -1278,73 +1059,52 @@ const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Sometype+Mono:wght@400;500;600;700&display=swap');
 
 :root{
-  --bg: #ffffff;
+  --bg: #ffffff;     /* TRUE WHITE */
   --paper: #ffffff;
-  --ink: #0a0a0a;
-  --muted: #6d6d6d;
+  --ink: #0b0b0b;
+  --muted: #6b6b6b;
 
-  --rule: rgba(10,10,10,.35);
-  --rule2: rgba(10,10,10,.10);
-
-  --max: 1126px;
-  --padX: 26px;
-
-  --radius: 0px;
+  --rule: rgba(11,11,11,.55);
+  --rule2: rgba(11,11,11,.10);    /* notebook lines */
+  --rule3: rgba(11,11,11,.06);    /* subtle grid */
+  --shadow: 0 0 0 1px rgba(11,11,11,.12);
 }
 
 *{margin:0;padding:0;box-sizing:border-box;}
 
 .qbg{
-  min-height:100vh;
+  min-height:100svh;
   background: var(--bg);
   color: var(--ink);
   font-family: 'Sometype Mono', ui-monospace, monospace;
   line-height:1.55;
-  position:relative;
+  display:flex;
 
-  /* Notebook: faint grid + ruled lines */
+  /* notebook stripes + subtle grid + left margin line */
   background-image:
-    linear-gradient(to right, var(--rule2) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--rule2) 1px, transparent 1px),
-    repeating-linear-gradient(to bottom, rgba(10,10,10,.08) 0px, rgba(10,10,10,.08) 1px, transparent 1px, transparent 36px);
-  background-size: 48px 48px, 48px 48px, auto;
-}
-
-/* Red margin line */
-.qbg:before{
-  content:"";
-  position:fixed;
-  top:0; bottom:0;
-  left:72px;
-  width:2px;
-  background: rgba(220, 38, 38, .35);
-  pointer-events:none;
-  z-index:0;
+    linear-gradient(to right, transparent 76px, rgba(220,38,38,.20) 76px, rgba(220,38,38,.20) 78px, transparent 78px),
+    repeating-linear-gradient(to bottom, var(--rule2) 0px, var(--rule2) 1px, transparent 1px, transparent 32px),
+    repeating-linear-gradient(to right, var(--rule3) 0px, var(--rule3) 1px, transparent 1px, transparent 120px);
 }
 
 .wrap{
   width:100%;
-  max-width: var(--max);
+  max-width: 1100px;
   margin: 0 auto;
-  padding: 18px var(--padX) 22px;
-  position:relative;
-  z-index:1;
+  padding: 26px 20px 22px;
   display:flex;
   flex-direction:column;
-  min-height:100vh;
+  flex:1;
 }
 
-.muted{ color: var(--muted); }
-.tiny{ font-size:12px; line-height:1.4; }
-.small{ font-size:13px; line-height:1.55; }
-.center{ text-align:center; }
+.main{ flex:1; }
 
 .top{
   display:flex;
-  align-items:center;
+  align-items:flex-end;
   justify-content:space-between;
   gap:16px;
-  padding: 10px 0 14px;
+  padding-bottom: 18px;
   border-bottom:2px solid var(--ink);
   margin-bottom: 22px;
 }
@@ -1352,7 +1112,7 @@ const CSS = `
 .brand{
   display:flex;
   align-items:center;
-  gap:14px;
+  gap:12px;
 }
 
 .brandBox{
@@ -1369,20 +1129,22 @@ const CSS = `
 .brandName{
   font-size:16px;
   letter-spacing:.02em;
-  font-weight:600;
+  font-weight:500;
 }
 
-.topMeta{
-  font-size:12px;
-  letter-spacing:.06em;
-}
+.muted{ color: var(--muted); }
+.tiny{ font-size:12px; line-height:1.4; }
+.fine{ font-size:12px; line-height: 1.5; }
+.small{ font-size:13px; line-height:1.55; }
 
 .hero{
-  padding: 8px 0 18px;
+  padding: 18px 0 16px;
   max-width: 980px;
   margin: 0 auto;
   text-align:center;
 }
+
+.center{ text-align:center; }
 
 .kicker{
   font-size:11px;
@@ -1413,7 +1175,7 @@ const CSS = `
   margin-top:14px;
   font-size:15px;
   line-height:1.65;
-  color: rgba(10,10,10,.78);
+  color: rgba(11,11,11,.78);
   max-width: 760px;
   margin-left:auto;
   margin-right:auto;
@@ -1424,16 +1186,19 @@ const CSS = `
 .card{
   border:2px solid var(--ink);
   padding: 22px;
-  background: rgba(255,255,255,.92);
+  background: var(--paper);
   margin-bottom:16px;
+  box-shadow: var(--shadow);
 }
 
-.card.symptoms{
-  background: rgba(255,255,255,.86);
+.grid2{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:16px;
 }
 
-.card.ritual{
-  background: rgba(255,255,255,.95);
+@media (max-width: 720px){
+  .grid2{ grid-template-columns: 1fr; }
 }
 
 .field{ margin-bottom: 16px; }
@@ -1461,16 +1226,7 @@ const CSS = `
   font-family: 'Sometype Mono', ui-monospace, monospace;
 }
 
-.input::placeholder{ color: rgba(10,10,10,.35); }
-
-.grid2{
-  display:grid;
-  grid-template-columns: 1fr 1fr;
-  gap:16px;
-}
-@media (max-width: 720px){
-  .grid2{ grid-template-columns: 1fr; }
-}
+.input::placeholder{ color: rgba(11,11,11,.35); }
 
 .stageGrid{
   display:grid;
@@ -1482,8 +1238,8 @@ const CSS = `
   border:2px solid var(--ink);
   padding:16px;
   text-align:left;
-  background: rgba(255,255,255,.96);
-  transition: all .18s cubic-bezier(.4,0,.2,1);
+  background: var(--paper);
+  transition: all .14s ease;
   cursor:pointer;
   font-family: 'Sometype Mono', ui-monospace, monospace;
 }
@@ -1494,6 +1250,7 @@ const CSS = `
   background: var(--ink);
   color: var(--bg);
 }
+
 .stage.active .muted{ color: rgba(255,255,255,.75); }
 
 .stageTitle{
@@ -1502,6 +1259,34 @@ const CSS = `
   font-size:16px;
 }
 
+/* symptoms */
+.symGrid{
+  display:grid;
+  grid-template-columns: 1fr;
+  gap:10px;
+}
+
+.sym{
+  border:2px solid var(--ink);
+  padding:14px;
+  text-align:left;
+  background: var(--paper);
+  transition: all .14s ease;
+  cursor:pointer;
+  font-family: 'Sometype Mono', ui-monospace, monospace;
+}
+
+.sym:hover{ transform: translateY(-2px); }
+
+.sym.active{
+  background: rgba(11,11,11,.06);
+  border-color: var(--ink);
+}
+
+.symTitle{ font-weight:700; font-size:14px; }
+.sym .muted{ margin-top:2px; }
+
+/* buttons */
 .btn{
   border:2px solid var(--ink);
   padding:14px 18px;
@@ -1512,19 +1297,25 @@ const CSS = `
   letter-spacing:.18em;
   font-size:11px;
   cursor:pointer;
-  transition: all .18s cubic-bezier(.4,0,.2,1);
+  transition: all .14s ease;
   font-family: 'Sometype Mono', ui-monospace, monospace;
   font-weight:700;
-  background: var(--paper);
-  color: var(--ink);
 }
+
+.btnText{ transform: translateY(0.5px); }
 
 .btn.primary{
   background: var(--ink);
   color: var(--bg);
 }
 .btn.primary:hover{ transform: translateY(-2px); }
+
+.btn.secondary{
+  background: var(--paper);
+  color: var(--ink);
+}
 .btn.secondary:hover{ transform: translateY(-2px); }
+
 .btn.disabled{ opacity:.35; cursor:not-allowed; }
 
 .link{
@@ -1537,24 +1328,23 @@ const CSS = `
   font-family: 'Sometype Mono', ui-monospace, monospace;
   font-size:12px;
 }
-.link:hover{ color: var(--ink); }
-.link:disabled{ opacity:.35; cursor:not-allowed; }
 
-.startRow{
+.link:hover{ color: var(--ink); }
+
+.ctaRow{
   display:flex;
-  align-items:center;
+  align-items:flex-start;
   justify-content:space-between;
   gap:16px;
-  margin-top: 10px;
+  margin-top: 8px;
   flex-wrap:wrap;
 }
 
-.trustInline{
+.trust{
   display:flex;
-  align-items:center;
-  justify-content:flex-end;
-  gap:18px;
+  gap:16px;
   flex-wrap:wrap;
+  padding-top: 10px;
 }
 
 .trustItem{
@@ -1562,7 +1352,7 @@ const CSS = `
   align-items:center;
   gap:8px;
   font-size:12px;
-  color: rgba(10,10,10,.70);
+  color: rgba(11,11,11,.75);
 }
 
 .scanHead{
@@ -1572,28 +1362,6 @@ const CSS = `
   gap:16px;
   margin-bottom: 12px;
 }
-
-.scanKicker{
-  display:flex;
-  align-items:center;
-  gap:10px;
-  font-size:12px;
-  letter-spacing:.04em;
-  margin-bottom:10px;
-}
-
-.dot{
-  opacity:.5;
-}
-
-.pill{
-  border:2px solid rgba(10,10,10,.25);
-  padding:6px 10px;
-  font-size:12px;
-  background: rgba(255,255,255,.9);
-}
-.pillStrong{ font-weight:700; color: var(--ink); }
-.pillSep{ opacity:.55; padding:0 6px; }
 
 .forceLine{
   display:flex;
@@ -1607,11 +1375,25 @@ const CSS = `
   font-size:14px;
 }
 
+.progress{
+  width:100%;
+  height:3px;
+  background: rgba(11,11,11,.2);
+  margin-bottom: 18px;
+  overflow:hidden;
+}
+
+.progressIn{
+  height:3px;
+  background: var(--ink);
+  transition: width .18s ease;
+}
+
 .qText{
   font-size: 22px;
   line-height: 1.35;
   letter-spacing: -0.01em;
-  font-weight: 700;
+  font-weight: 600;
   margin-bottom: 18px;
   color: var(--ink);
 }
@@ -1629,10 +1411,10 @@ const CSS = `
   width:100%;
   text-align:left;
   border:2px solid var(--ink);
-  background: rgba(255,255,255,.96);
+  background: var(--paper);
   padding:16px;
   cursor:pointer;
-  transition: all .18s cubic-bezier(.4,0,.2,1);
+  transition: all .14s ease;
   font-family: 'Sometype Mono', ui-monospace, monospace;
 }
 
@@ -1656,6 +1438,7 @@ const CSS = `
 
 .chev{ opacity:.55; flex-shrink:0; }
 
+/* timer */
 .timer{
   display:flex;
   align-items:center;
@@ -1665,85 +1448,76 @@ const CSS = `
   border:2px solid var(--ink);
   margin-bottom:14px;
   font-size:12px;
-  color: rgba(10,10,10,.72);
+  color: rgba(11,11,11,.75);
+  box-shadow: var(--shadow);
 }
+
 .timer.expired{
   background: var(--ink);
   color: var(--bg);
 }
+
 .timer strong{ color: var(--ink); font-weight:700; }
 .timer.expired strong{ color: var(--bg); }
 
-.ritualIcon{
+/* welcome */
+.welcome{ text-align:center; }
+.welcomeIcon{
+  margin:0 auto 14px;
   width:56px;
   height:56px;
   border:2px solid var(--ink);
   display:flex;
   align-items:center;
   justify-content:center;
-  margin-bottom:14px;
+  background: rgba(11,11,11,.03);
 }
-
-.ritualTitle{
-  font-size:26px;
+.welcomeTitle{ font-size:28px; font-weight:700; margin-bottom:10px; }
+.welcomeText{ font-size:15px; line-height:1.65; color: rgba(11,11,11,.78); max-width: 720px; margin: 0 auto 14px; }
+.welcomeBox{
+  text-align:left;
+  border:2px solid rgba(11,11,11,.25);
+  background: rgba(11,11,11,.03);
+  padding:14px;
+  max-width: 780px;
+  margin: 0 auto 14px;
+}
+.welcomeBoxTitle{
+  font-size:11px;
+  letter-spacing:.2em;
+  text-transform:uppercase;
+  color: rgba(11,11,11,.65);
   font-weight:700;
-  margin-bottom:12px;
+  margin-bottom:10px;
 }
 
-.ritualText{
-  font-size:14px;
-  line-height:1.7;
-  color: rgba(10,10,10,.78);
-  margin-bottom:16px;
-  max-width:820px;
-}
-
-.ritualRules{
-  border-top:2px solid rgba(10,10,10,.15);
-  padding-top:14px;
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  margin-bottom:16px;
-}
-
-.ruleItem{
-  display:flex;
-  align-items:flex-start;
-  gap:10px;
-  font-size:13px;
-  color: rgba(10,10,10,.75);
-}
-.ruleItem svg{ flex-shrink:0; margin-top:2px; }
-
-.ctaRow{
+/* checkpoint */
+.ahaIcon{
+  margin:0 auto 18px;
+  width:64px;
+  height:64px;
+  border:2px solid var(--ink);
   display:flex;
   align-items:center;
-  justify-content:space-between;
-  gap:16px;
-  margin-top: 8px;
-  flex-wrap:wrap;
-}
-
-.ahaTop{
-  display:flex;
-  justify-content:space-between;
-  gap:16px;
-  align-items:flex-start;
-  margin-bottom:14px;
+  justify-content:center;
 }
 
 .ahaTitle{
   font-size:28px;
   font-weight:700;
-  margin-bottom:10px;
+  margin-bottom:14px;
+  text-align:center;
 }
 
 .ahaText{
-  font-size:14px;
+  font-size:15px;
   line-height:1.65;
-  color: rgba(10,10,10,.78);
-  max-width:720px;
+  color: rgba(11,11,11,.78);
+  margin-bottom:18px;
+  max-width:640px;
+  margin-left:auto;
+  margin-right:auto;
+  text-align:center;
 }
 
 .ahaForce{
@@ -1752,8 +1526,8 @@ const CSS = `
   align-items:center;
   padding:12px 14px;
   border:2px solid var(--ink);
-  background: rgba(255,255,255,.96);
-  margin: 10px 0 14px;
+  background: var(--paper);
+  margin: 0 auto 16px;
 }
 
 .ahaForceName{
@@ -1762,49 +1536,22 @@ const CSS = `
 }
 
 .ahaHint{
-  font-size:13px;
-  line-height:1.6;
-  color: rgba(10,10,10,.68);
-  margin-bottom:14px;
-  max-width:780px;
-}
-
-.ahaQuestion{
-  font-size:16px;
-  font-weight:700;
-  margin: 8px 0 14px;
-}
-
-.symptomsTitle{
-  font-size:12px;
-  letter-spacing:.2em;
-  text-transform:uppercase;
-  color: rgba(10,10,10,.68);
-  font-weight:700;
-  margin-bottom:14px;
-}
-
-.symptomList{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-}
-
-.symptomItem{
-  display:flex;
-  align-items:flex-start;
-  gap:12px;
   font-size:14px;
   line-height:1.55;
-  color: rgba(10,10,10,.78);
+  color: rgba(11,11,11,.68);
+  margin-bottom:14px;
+  max-width:620px;
+  margin-left:auto;
+  margin-right:auto;
+  text-align:center;
 }
-.symptomItem svg{ flex-shrink:0; margin-top:2px; }
 
 .resultGrid{
   display:grid;
-  grid-template-columns: 1.1fr .9fr;
+  grid-template-columns: 1.05fr .95fr;
   gap:18px;
 }
+
 @media (max-width: 900px){
   .resultGrid{ grid-template-columns: 1fr; }
 }
@@ -1812,17 +1559,19 @@ const CSS = `
 .panel{
   border:2px solid var(--ink);
   padding:18px;
-  background: rgba(255,255,255,.96);
+  background: var(--paper);
+  box-shadow: var(--shadow);
 }
+
 .panel.soft{
-  background: rgba(255,255,255,.88);
+  background: rgba(255,255,255,.92);
 }
 
 .panelTitle{
   font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.65);
+  color: rgba(11,11,11,.65);
   font-weight:700;
   margin-bottom:10px;
 }
@@ -1830,8 +1579,9 @@ const CSS = `
 .panelText{
   font-size:14px;
   line-height:1.65;
-  color: rgba(10,10,10,.78);
+  color: rgba(11,11,11,.78);
 }
+
 .panelText.strong{
   font-weight:700;
   color: var(--ink);
@@ -1842,66 +1592,16 @@ const CSS = `
 
 .list{
   padding-left: 18px;
-  color: rgba(10,10,10,.78);
+  color: rgba(11,11,11,.78);
   line-height:1.65;
   font-size:14px;
 }
+
 .list li{ margin-bottom:8px; }
-
-.benchmark{
-  display:flex;
-  flex-direction:column;
-  gap:10px;
-  padding:14px;
-  background: rgba(255,255,255,.8);
-  border:2px solid rgba(10,10,10,.22);
-  margin-bottom:12px;
-}
-
-.benchRow{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  font-size:13px;
-}
-.benchRow.strong{
-  font-weight:700;
-  padding-top:8px;
-  border-top:1px solid rgba(10,10,10,.2);
-}
-.benchLabel{ color: rgba(10,10,10,.62); }
-.benchValue{ font-weight:700; font-size:16px; color: var(--ink); }
-
-.outcomes{
-  margin-top:18px;
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-}
-
-.outcome{
-  padding:14px;
-  border:2px solid rgba(10,10,10,.30);
-  background: rgba(255,255,255,.85);
-}
-
-.outcomeLabel{
-  font-size:11px;
-  letter-spacing:.2em;
-  text-transform:uppercase;
-  margin-bottom:8px;
-  font-weight:700;
-  color: rgba(10,10,10,.65);
-}
-.outcomeText{
-  font-size:13px;
-  line-height:1.55;
-  color: rgba(10,10,10,.78);
-}
 
 .divider{
   height:2px;
-  background: rgba(10,10,10,.18);
+  background: rgba(11,11,11,.2);
   margin:16px 0;
 }
 
@@ -1930,7 +1630,7 @@ const CSS = `
   font-size:9px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.45);
+  color: rgba(11,11,11,.45);
   font-weight:700;
 }
 
@@ -1940,25 +1640,26 @@ const CSS = `
   padding:4px 8px;
   border:2px solid var(--ink);
 }
+
 .tagWarn{
   color: var(--ink);
-  background: rgba(10,10,10,.06);
+  background: rgba(11,11,11,.06);
   padding:4px 8px;
-  border:2px solid rgba(10,10,10,.22);
+  border:2px solid rgba(11,11,11,.25);
 }
 
 .barWrap{
   position:relative;
   border:2px solid var(--ink);
   height: 26px;
-  background: rgba(255,255,255,.96);
+  background: rgba(255,255,255,.9);
   overflow:hidden;
 }
 
 .barIn{
   height:100%;
   background: var(--ink);
-  transition: width .5s cubic-bezier(.4,0,.2,1);
+  transition: width .25s ease;
 }
 
 .barPct{
@@ -1984,12 +1685,13 @@ const CSS = `
   align-items:center;
   gap:14px;
   padding:14px;
-  border:2px solid rgba(10,10,10,.30);
-  background: rgba(255,255,255,.94);
+  border:2px solid rgba(11,11,11,.35);
+  background: rgba(255,255,255,.95);
   cursor:pointer;
-  transition: all .18s cubic-bezier(.4,0,.2,1);
+  transition: all .14s ease;
   text-align:left;
   font-family: 'Sometype Mono', ui-monospace, monospace;
+  box-shadow: var(--shadow);
 }
 
 .commitStep:hover{
@@ -2015,63 +1717,43 @@ const CSS = `
 
 .commitContent{ flex:1; }
 .commitTitle{ font-weight:700; font-size:14px; margin-bottom:4px; }
-.commitSub{ font-size:11px; color: rgba(10,10,10,.55); }
+.commitSub{ font-size:11px; color: rgba(11,11,11,.55); }
 .commitStep.primary .commitSub{ color: rgba(255,255,255,.75); }
 
-.metaRow{
-  margin-top: 14px;
-  display:flex;
-  justify-content:center;
-  gap:14px;
-  flex-wrap:wrap;
+.miniBox{
+  border:2px solid rgba(11,11,11,.25);
+  background: rgba(11,11,11,.03);
+  padding:12px;
 }
 
-.metaItem{
-  border:2px solid rgba(10,10,10,.20);
-  background: rgba(255,255,255,.92);
-  padding:10px 12px;
-  min-width: 200px;
-  text-align:left;
-}
-
-.metaLabel{
-  display:block;
-  font-size:10px;
+.miniTitle{
+  font-size:11px;
   letter-spacing:.2em;
   text-transform:uppercase;
-  color: rgba(10,10,10,.55);
+  color: rgba(11,11,11,.65);
   font-weight:700;
-  margin-bottom:6px;
+  margin-bottom:10px;
 }
 
-.metaValue{
-  display:block;
-  font-weight:700;
-  font-size:14px;
+.miniLine{
+  display:flex;
+  justify-content:space-between;
+  gap:12px;
+  padding: 8px 0;
+  border-top: 1px solid rgba(11,11,11,.12);
 }
+.miniLine:first-of-type{ border-top:none; padding-top:0; }
 
-.metaHint{
-  display:block;
-  margin-top:6px;
-  font-size:12px;
-  line-height:1.45;
-}
+.miniKey{ color: rgba(11,11,11,.55); font-weight:700; letter-spacing:.08em; font-size:12px; }
+.miniVal{ color: rgba(11,11,11,.80); font-weight:600; font-size:12px; }
 
 .footer{
-  margin-top:auto;
+  margin-top: 18px;
   padding-top: 14px;
   border-top:2px solid var(--ink);
   display:flex;
   align-items:center;
-  justify-content:space-between;
   gap:12px;
-}
-
-.footerLeft{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  flex-wrap:wrap;
 }
 
 .footerTag{
@@ -2085,13 +1767,13 @@ const CSS = `
   color: var(--bg);
 }
 
-@media (max-width: 780px){
-  .wrap{ padding: 16px 16px 20px; }
-  .qbg:before{ left: 44px; opacity:.25; }
+@media (max-width: 640px){
+  .wrap{ padding:20px 16px 18px; }
   .top{ flex-direction:column; align-items:flex-start; }
-  .startRow{ align-items:stretch; }
-  .trustInline{ justify-content:flex-start; }
+  .hero{ padding:14px 0 12px; }
   .card{ padding:16px; }
   .ctaRow{ flex-direction:column; align-items:stretch; }
+  .trust{ flex-direction:column; gap:10px; padding-top: 0; }
+  .commitStep{ padding:12px; }
 }
 ` as const;
